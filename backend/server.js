@@ -6,9 +6,11 @@ const { saveScore, getScoresByMode, getAllScores } = require('./database');
 
 const app = express();
 
+const MAX_STATE_HISTORY = 100;  // max state snapshots per score entry
+
 // --- Middleware ---
 app.use(cors({ origin: '*' }));
-app.use(express.json());
+app.use(express.json({ limit: '2mb' }));
 
 // Rate limiter: 100 requests per 5 minutes per IP (general)
 const generalLimiter = rateLimit({
@@ -40,7 +42,7 @@ app.get('/health', (_req, res) => {
 
 // --- POST /api/scores — Save a score ---
 app.post('/api/scores', scoreLimiter, (req, res) => {
-  const { name, score, steps, mode } = req.body;
+  const { name, score, steps, mode, stateHistory } = req.body;
 
   // Validate mode
   if (mode !== 'normal' && mode !== 'enhanced') {
@@ -55,6 +57,25 @@ app.post('/api/scores', scoreLimiter, (req, res) => {
   // Validate steps
   if (!Number.isInteger(steps) || steps < 1) {
     return res.status(400).json({ error: 'Steps must be a positive integer.' });
+  }
+
+  // Validate stateHistory if provided
+  if (stateHistory !== undefined && stateHistory !== null) {
+    if (typeof stateHistory !== 'string') {
+      return res.status(400).json({
+        error: 'stateHistory must be a JSON string or omitted.'
+      });
+    }
+    try {
+      const parsed = JSON.parse(stateHistory);
+      if (!Array.isArray(parsed) || parsed.length < 1 || parsed.length > MAX_STATE_HISTORY) {
+        return res.status(400).json({
+          error: `stateHistory must be a JSON array of 1-${MAX_STATE_HISTORY} state snapshots.`
+        });
+      }
+    } catch (e) {
+      return res.status(400).json({ error: 'stateHistory is not valid JSON.' });
+    }
   }
 
   // Validate name
@@ -75,10 +96,22 @@ app.post('/api/scores', scoreLimiter, (req, res) => {
     steps,
     mode,
     createdAt: Date.now(),
-    ipHash
+    ipHash,
+    stateHistory: typeof stateHistory === 'string' ? stateHistory : null
   });
 
-  res.status(201).json(entry);
+  // Parse state_history back for the response (it may be NULL)
+  const responseEntry = {
+    id: entry.id,
+    name: entry.name,
+    score: entry.score,
+    steps: entry.steps,
+    mode: entry.mode,
+    state_history: entry.state_history || null,
+    createdAt: entry.createdAt
+  };
+
+  res.status(201).json(responseEntry);
 });
 
 // --- GET /api/scores — List scores ---

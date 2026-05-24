@@ -17,7 +17,7 @@ var HS = {}; // exposed globally
   /* ── API helpers ─────────────────────────────────────────── */
 
   /** Save a score to the backend. Returns the saved entry. */
-  HS.saveScore = async function (mode, score, steps, name) {
+  HS.saveScore = async function (mode, score, steps, name, stateHistory) {
     if (score < 1) return null;
     var body = {
       mode: mode,
@@ -27,6 +27,20 @@ var HS = {}; // exposed globally
         ? name.trim().slice(0, MAX_NAME_LEN)
         : 'Player'
     };
+
+    if (stateHistory && Array.isArray(stateHistory) && stateHistory.length > 0) {
+      // Serialize: extract only the replay-relevant fields from each snapshot
+      body.stateHistory = JSON.stringify(stateHistory.map(function (s) {
+        return {
+          snake: s.snake,
+          food: s.food,
+          walls: s.walls,
+          wallBreakerActive: s.wallBreakerActive,
+          wallBreakerTimer: s.wallBreakerTimer
+        };
+      }));
+    }
+
     var resp = await fetch(API_BASE + '/api/scores', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -42,13 +56,19 @@ var HS = {}; // exposed globally
   /** Get scores for a specific mode from the backend. */
   HS.getAllScores = async function (mode) {
     var url = API_BASE + '/api/scores?mode=' + encodeURIComponent(mode);
+    console.log('[HS] GET', url);
     var resp = await fetch(url);
+    console.log('[HS] Response status:', resp.status, resp.ok);
     if (!resp.ok) {
       var errText = await resp.text();
+      console.error('[HS] Non-ok response:', errText);
       throw new Error(errText || resp.statusText);
     }
     var data = await resp.json();
-    return data[mode] || [];
+    console.log('[HS] Response data:', JSON.stringify(data).slice(0, 200));
+    var scores = data[mode];
+    console.log('[HS] scores for mode "' + mode + '":', scores ? scores.length + ' items' : 'undefined');
+    return scores || [];
   };
 
   /* ── Escape HTML ─────────────────────────────────────────── */
@@ -82,7 +102,10 @@ var HS = {}; // exposed globally
     btn.style.display = 'inline-block';
 
     btn.onclick = function () {
-      showSaveModal(mode, score, steps);
+      // Capture history from the live game
+      var gameState = window._snakeGameState;
+      var stateHistory = gameState ? gameState.getHistory() : [];
+      showSaveModal(mode, score, steps, stateHistory);
     };
   };
 
@@ -121,6 +144,7 @@ var HS = {}; // exposed globally
     var pendingMode = '';
     var pendingScore = 0;
     var pendingSteps = 0;
+    var pendingStateHistory = null;
 
     /* Close via overlay click */
     overlay.addEventListener('click', function (e) {
@@ -141,7 +165,7 @@ var HS = {}; // exposed globally
       try {
         submitBtn.disabled = true;
         submitBtn.textContent = 'Saving...';
-        var entry = await HS.saveScore(pendingMode, pendingScore, pendingSteps, name);
+        var entry = await HS.saveScore(pendingMode, pendingScore, pendingSteps, name, pendingStateHistory);
         showToast('🏆 High score saved! (' + entry.score + ', ' + entry.steps + ' steps)');
       } catch (err) {
         showToast('❌ Failed to save score: ' + err.message);
@@ -169,10 +193,11 @@ var HS = {}; // exposed globally
       if (overlay) overlay.style.display = 'none';
     }
 
-    function openModal(mode, score, steps) {
+    function openModal(mode, score, steps, stateHistory) {
       pendingMode = mode;
       pendingScore = score;
       pendingSteps = steps;
+      pendingStateHistory = stateHistory;
       var info = document.getElementById('saveScoreInfo');
       if (info) info.textContent = 'Score: ' + score + ' | Steps: ' + steps;
       var input = document.getElementById('saveScoreNameInput');
@@ -190,10 +215,10 @@ var HS = {}; // exposed globally
     };
   }
 
-  function showSaveModal(mode, score, steps) {
+  function showSaveModal(mode, score, steps, stateHistory) {
     ensureSaveModal();
     if (window._hsSaveModal) {
-      window._hsSaveModal.open(mode, score, steps);
+      window._hsSaveModal.open(mode, score, steps, stateHistory);
     }
   }
 
@@ -204,6 +229,8 @@ var HS = {}; // exposed globally
 
   /* ── High-score modal (view scores) ──────────────────────── */
 
+  var scoreModalOverlay = null;  // reference for renderScoresList
+
   function getScoreModalOverlay() {
     return document.getElementById('scoreModalOverlay');
   }
@@ -211,7 +238,7 @@ var HS = {}; // exposed globally
   function ensureScoreModal() {
     if (getScoreModalOverlay()) return;
 
-    var overlay = document.createElement('div');
+    var overlay = scoreModalOverlay = document.createElement('div');
     overlay.id = 'scoreModalOverlay';
     overlay.style.cssText = 'display:none;position:fixed;inset:0;background:rgba(0,0,0,0.7);justify-content:center;align-items:center;z-index:700;';
 
@@ -296,19 +323,33 @@ var HS = {}; // exposed globally
         scores.forEach(function (s, i) {
           var rank = i + 1;
           var medal = rank === 1 ? '🥇' : rank === 2 ? '🥈' : rank === 3 ? '🥉' : rank;
+          var replayBtn = s.state_history
+            ? '<button class="replay-btn" data-id="' + s.id + '" title="Replay this score">▶</button>'
+            : '';
           html += '<li style="display:flex;justify-content:space-between;align-items:center;padding:8px 12px;' +
             'margin-bottom:6px;border-radius:8px;background:#1a1a2e;">' +
             '<span style="font-weight:bold;color:#e94560;min-width:30px;">' + medal + '</span>' +
             '<span style="flex:1;margin-left:8px;">' + escapeHTML(s.name) + '</span>' +
             '<span style="margin-left:12px;color:#4ecca3;font-weight:bold;">' + s.score + '</span>' +
             '<span style="margin-left:8px;color:#888;font-size:0.85rem;">' + s.steps + ' steps</span>' +
+            (replayBtn ? '<span style="margin-left:8px">' + replayBtn + '</span>' : '') +
             '</li>';
         });
         html += '</ol>';
         listEl.innerHTML = html;
+
+        // Attach replay button click handlers
+        scoreModalOverlay.querySelectorAll('.replay-btn').forEach(function (btn) {
+          btn.addEventListener('click', function () {
+            var scoreId = parseInt(btn.dataset.id, 10);
+            startReplay(scoreId, scores);
+          });
+        });
       }
-    }).catch(function () {
-      listEl.innerHTML = '<p style="color:#e94560;text-align:center;padding:20px;">Failed to load scores.</p>';
+    }).catch(function (err) {
+      console.error('[HS] Failed to load scores:', err);
+      listEl.innerHTML = '<p style="color:#e94560;text-align:center;padding:20px;">Failed to load scores: ' +
+        escapeHTML(err.message) + '</p>';
     });
   }
 
@@ -343,6 +384,178 @@ var HS = {}; // exposed globally
     var container = document.getElementById('highscoreSave');
     return container && container.style.display !== 'none';
   };
+
+  /* ── Replay viewer ──────────────────────────────────────── */
+
+  /** Start a replay for the given score ID. */
+  function startReplay(scoreId, scores) {
+    var entry = (scores || []).find(function (s) { return s.id === scoreId; });
+    if (!entry || !entry.state_history) return;
+    showReplayOverlay(entry);
+  }
+
+  /** Build and show the replay overlay modal. */
+  function showReplayOverlay(entry) {
+    var overlay = document.createElement('div');
+    overlay.id = 'replayOverlay';
+    overlay.style.cssText = 'display:none;position:fixed;inset:0;background:rgba(0,0,0,0.9);' +
+      'justify-content:center;align-items:center;flex-direction:column;z-index:750;color:#eee;';
+
+    var box = document.createElement('div');
+    box.style.cssText = 'text-align:center;padding:20px;max-width:600px;width:95vw;';
+
+    box.innerHTML = '<h2 style="margin-bottom:8px;">🎮 Replay: ' + escapeHTML(entry.name) +
+      '</h2>' +
+      '<p style="color:#aaa;margin-bottom:12px;">Score: ' + entry.score +
+      ' | ' + entry.steps + ' steps | ' +
+      (entry.mode === 'enhanced' ? 'Enhanced' : 'Normal') +
+      '</p>' +
+      '<canvas id="replayCanvas" style="border:2px solid #0f3460;border-radius:6px;' +
+      'background:#16213e;display:block;margin:0 auto;"></canvas>' +
+      '<div style="margin-top:12px;display:flex;gap:10px;justify-content:center;align-items:center;">' +
+        '<button id="replayClose" style="padding:8px 24px;border:none;border-radius:8px;cursor:pointer;' +
+        'background:#0f3460;color:#eee;">Close</button>' +
+        '<span id="replayProgress" style="color:#888;font-size:0.9rem;"></span>' +
+      '</div>';
+
+    overlay.appendChild(box);
+    document.body.appendChild(overlay);
+    overlay.style.display = 'flex';
+
+    var TILE = 20;
+    var COLS = 25;
+    var ROWS = 25;
+    var canvas = document.getElementById('replayCanvas');
+    canvas.width = COLS * TILE;  // 500
+    canvas.height = ROWS * TILE;  // 500
+    var ctx = canvas.getContext('2d');
+
+    // Parse stored state history
+    var states = JSON.parse(entry.state_history);
+    var total = states.length;
+    var idx = 0;
+
+    /* ── Draw a single state (replicates game.js draw()) ── */
+    function renderState(state) {
+      var snake = state.snake;
+      var food = state.food;
+      var wallBreakerActive = state.wallBreakerActive;
+      var walls = state.walls || [];
+
+      // Background
+      ctx.fillStyle = '#16213e';
+      ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+      // Grid
+      ctx.strokeStyle = '#1a2744';
+      ctx.lineWidth = 0.5;
+      for (var i = 0; i <= COLS; i++) {
+        ctx.beginPath(); ctx.moveTo(i * TILE, 0); ctx.lineTo(i * TILE, canvas.height); ctx.stroke();
+      }
+      for (var i = 0; i <= ROWS; i++) {
+        ctx.beginPath(); ctx.moveTo(0, i * TILE); ctx.lineTo(canvas.width, i * TILE); ctx.stroke();
+      }
+
+      // Walls
+      for (var wi = 0; wi < walls.length; wi++) {
+        var wall = walls[wi];
+        var segments = [
+          { x: wall.x1, y: wall.y1 },
+          { x: wall.x2, y: wall.y2 }
+        ];
+        for (var si = 0; si < segments.length; si++) {
+          var seg = segments[si];
+          ctx.fillStyle = 'rgba(145,145,150,0.9)';
+          ctx.fillRect(seg.x * TILE + 1, seg.y * TILE + 1, TILE - 2, TILE - 2);
+          ctx.strokeStyle = 'rgba(100,100,105,0.8)';
+          ctx.lineWidth = 1;
+          ctx.strokeRect(seg.x * TILE + 2, seg.y * TILE + 2, TILE - 4, TILE - 4);
+          ctx.strokeStyle = 'rgba(180,180,185,0.55)';
+          ctx.lineWidth = 1.5;
+          var cx = seg.x * TILE + TILE / 2;
+          var cy = seg.y * TILE + TILE / 2;
+          ctx.beginPath();
+          ctx.moveTo(cx - 4, cy - 4); ctx.lineTo(cx + 4, cy + 4);
+          ctx.moveTo(cx + 4, cy - 4); ctx.lineTo(cx - 4, cy + 4);
+          ctx.stroke();
+        }
+      }
+
+      // Snake
+      for (var si = 0; si < snake.length; si++) {
+        var s = snake[si];
+        var ratio = 1 - si / snake.length;
+        var r, g, b;
+        if (wallBreakerActive) {
+          var pulse = Math.sin(0) * 40 + 180;  // fixed time = deterministic
+          if (si === 0) {
+            r = 255; g = Math.round(pulse + 40); b = 0;
+          } else {
+            r = 255; g = Math.round(pulse); b = 20;
+          }
+        } else {
+          r = 30; g = Math.round(180 + 45 * ratio); b = 100;
+        }
+        ctx.fillStyle = 'rgb(' + r + ',' + g + ',' + b + ')';
+        ctx.beginPath();
+        ctx.roundRect(s.x * TILE + 1, s.y * TILE + 1, TILE - 2, TILE - 2, 4);
+        ctx.fill();
+      }
+
+      // Food
+      if (food) {
+        if (food.type === 1) {
+          ctx.fillStyle = '#f5a623';
+          ctx.beginPath();
+          ctx.arc(food.x * TILE + TILE / 2, food.y * TILE + TILE / 2, TILE / 2 - 2, 0, Math.PI * 2);
+          ctx.fill();
+          ctx.fillStyle = '#4ecca3';
+          ctx.fillRect(food.x * TILE + TILE / 2 - 1, food.y * TILE + 3, 2, 5);
+        } else {
+          ctx.fillStyle = '#e94560';
+          ctx.beginPath();
+          ctx.arc(food.x * TILE + TILE / 2, food.y * TILE + TILE / 2, TILE / 2 - 2, 0, Math.PI * 2);
+          ctx.fill();
+          ctx.shadowColor = '#e94560';
+          ctx.shadowBlur = 12;
+          ctx.fill();
+          ctx.shadowBlur = 0;
+        }
+      }
+
+      // Progress
+      var progressEl = document.getElementById('replayProgress');
+      if (progressEl) {
+        progressEl.textContent = idx + ' / ' + total + ' steps';
+      }
+    }
+
+    // Animation loop at 10 fps (same as live game)
+    renderState(states[0]);
+    idx = 1;
+    var interval = setInterval(function () {
+      if (idx < total) {
+        renderState(states[idx]);
+        idx++;
+      } else {
+        clearInterval(interval);
+      }
+    }, 100);
+
+    // Close handlers
+    document.getElementById('replayClose').addEventListener('click', function () {
+      clearInterval(interval);
+      overlay.style.display = 'none';
+      document.body.removeChild(overlay);
+    });
+    overlay.addEventListener('click', function (e) {
+      if (e.target === overlay) {
+        clearInterval(interval);
+        overlay.style.display = 'none';
+        document.body.removeChild(overlay);
+      }
+    });
+  }
 
   /* ── Init ────────────────────────────────────────────────── */
 

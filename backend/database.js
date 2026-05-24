@@ -15,6 +15,7 @@ db.exec(`
     score INTEGER NOT NULL,
     steps INTEGER NOT NULL,
     mode TEXT NOT NULL CHECK(mode IN ('normal', 'enhanced')),
+    state_history TEXT,  -- NULL or JSON array of state snapshots (for replay)
     created_at INTEGER NOT NULL,
     ip_hash TEXT NOT NULL
   );
@@ -23,19 +24,20 @@ db.exec(`
 `);
 
 /** Save a score entry. Returns the inserted row. */
-function saveScore({ name, score, steps, mode, createdAt, ipHash }) {
+function saveScore({ name, score, steps, mode, createdAt, ipHash, stateHistory }) {
   const stmt = db.prepare(`
-    INSERT INTO high_scores (name, score, steps, mode, created_at, ip_hash)
-    VALUES (?, ?, ?, ?, ?, ?)
+    INSERT INTO high_scores (name, score, steps, mode, state_history, created_at, ip_hash)
+    VALUES (?, ?, ?, ?, ?, ?, ?)
   `);
-  const result = stmt.run(name, score, steps, mode, createdAt, ipHash);
-  return { id: result.lastInsertRowid, name, score, steps, mode, createdAt };
+  const result = stmt.run(name, score, steps, mode, stateHistory || null, createdAt, ipHash);
+  return { id: result.lastInsertRowid, name, score, steps, mode, createdAt, state_history: stateHistory };
 }
 
 /** Get scores for a mode, sorted by score DESC then steps ASC. */
 function getScoresByMode(mode, limit = 20) {
   const stmt = db.prepare(
-    'SELECT id, name, score, steps, mode, created_at FROM high_scores WHERE mode = ? ORDER BY score DESC, steps ASC LIMIT ?'
+    'SELECT id, name, score, steps, mode, state_history, created_at '
+    + 'FROM high_scores WHERE mode = ? ORDER BY score DESC, steps ASC LIMIT ?'
   );
   return stmt.all(mode, limit);
 }
@@ -44,7 +46,15 @@ function getScoresByMode(mode, limit = 20) {
 function getAllScores(limit = 20) {
   const normal = getScoresByMode('normal', limit);
   const enhanced = getScoresByMode('enhanced', limit);
-  return { normal, enhanced };
+  return { normal: normal.map(score => ({
+    id: score.id, name: score.name, score: score.score,
+    steps: score.steps, mode: score.mode,
+    state_history: score.state_history, created_at: score.created_at
+  })), enhanced: enhanced.map(score => ({
+    id: score.id, name: score.name, score: score.score,
+    steps: score.steps, mode: score.mode,
+    state_history: score.state_history, created_at: score.created_at
+  })) };
 }
 
 module.exports = { saveScore, getScoresByMode, getAllScores, db };

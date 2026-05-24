@@ -3,6 +3,7 @@ const ctx = canvas.getContext('2d');
 const TILE = 20;
 const COLS = 25;
 const ROWS = 25;
+const MAX_HISTORY = 100;  // max states kept (for rewind + replay capture)
 canvas.width = COLS * TILE;
 canvas.height = ROWS * TILE;
 
@@ -182,10 +183,12 @@ function saveState() {
     snake: snake.map(s => ({ ...s })),
     food: { ...food },
     walls: walls.map(w => ({ ...w })),
+    wallBreakerActive: wallBreakerActive,
+    wallBreakerTimer: wallBreakerTimer,
   });
-  // Keep only last 100 states (oldest first, so trim end)
-  if (history.length > 100) {
-    history = history.slice(history.length - 100);
+  // Keep only last MAX_HISTORY states (oldest first, so trim end)
+  if (history.length > MAX_HISTORY) {
+    history = history.slice(history.length - MAX_HISTORY);
   }
 }
 
@@ -791,3 +794,12 @@ document.addEventListener('keydown', e => {
 
 // Initial start is from welcome page, so no auto-start
 // startGame();
+
+// Expose state history for highscore.js to capture on save
+window._snakeGameState = {
+  getHistory: function () { return history; },
+  isEnhanced: isEnhanced,
+  TILE: TILE,
+  COLS: COLS,
+  ROWS: ROWS
+};
