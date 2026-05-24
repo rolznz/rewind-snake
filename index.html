@@ -67,7 +67,25 @@
     cursor: pointer;
   }
   #homeBtn:hover { background: #6ee7b7; }
-  /* Overlay popup */
+  /* ── High-score save UI ── */
+  #highscoreSave {
+    display: none;
+    margin-top: 8px;
+    text-align: center;
+  }
+  #saveHighscoreBtn {
+    display: none;
+    padding: 8px 20px;
+    font-size: 0.95rem;
+    border: none;
+    border-radius: 6px;
+    background: #f5a623;
+    color: #1a1a2e;
+    font-weight: bold;
+    cursor: pointer;
+  }
+  #saveHighscoreBtn:hover { background: #f7b94b; }
+  /* ── Overlay popup ── */
   #popup {
     display: none;
     position: fixed;
@@ -351,6 +369,9 @@
 <button id="btn" onclick="confirmRestart()">Play Again</button>
 <button id="undoBtn" onclick="showUndoPopup()">⏪ Back in Time</button>
 <button id="homeBtn" onclick="showHomePopup()">🏠 Home</button>
+  <div id="highscoreSave">
+    <button id="saveHighscoreBtn">🏆 Save High Score</button>
+  </div>
   <div id="controls">Arrow keys or WASD to move · <b>X</b> for Wall Breaker (Enhanced)</div>
 </div>
 
@@ -399,6 +420,7 @@
   <div id="countdownNum"></div>
 </div>
 
+<script src="highscore.js"></script>
 <script src="game.js"></script>
 <!-- Initialize Bitcoin Connect at startup -->
 <script>

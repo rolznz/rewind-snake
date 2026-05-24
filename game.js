@@ -7,6 +7,7 @@ canvas.width = COLS * TILE;
 canvas.height = ROWS * TILE;
 
 let snake, dir, nextDir, food, score, alive, loop;
+let steps = 0; // total steps taken in current game
 let history = []; // array of { snake, food, walls } snapshots (oldest first), max 100
 const $score = document.getElementById('score');
 const $msg = document.getElementById('msg');
@@ -24,6 +25,8 @@ const $payBtn = document.getElementById('payBtn');
 const $toast = document.getElementById('toast');
 const $flash = document.getElementById('powerup-flash');
 const $controls = document.getElementById('controls');
+const $highscoreSave = document.getElementById('highscoreSave');
+const $saveHighscoreBtn = document.getElementById('saveHighscoreBtn');
 
 // --- Mode ---
 let isEnhanced = false;
@@ -80,6 +83,7 @@ function startGame(mode) {
   score = 0;
   alive = true;
   history = [];
+  steps = 0;
   walls = [];
   growQueue = 0;
   wallSpawnChance = 0.03;
@@ -98,6 +102,7 @@ function startGame(mode) {
   $btn.style.display = 'none';
   $undoBtn.style.display = 'none';
   $homeBtn.style.display = 'inline-block';
+  if ($highscoreSave) $highscoreSave.style.display = 'none';
   placeFood();
   draw();
   startCountdown(() => {
@@ -187,6 +192,7 @@ function saveState() {
 function update() {
   if (!alive) return;
   saveState(); // save before move
+  steps++;
 
   dir = nextDir;
   const head = { x: snake[0].x + dir.x, y: snake[0].y + dir.y };
@@ -428,6 +434,13 @@ function gameOver() {
     $undoBtn.textContent = `⏪ Back in Time`;
   }
   $homeBtn.style.display = 'inline-block';
+
+  // Show high-score save button
+  if ($highscoreSave) $highscoreSave.style.display = 'block';
+  if ($saveHighscoreBtn) {
+    $saveHighscoreBtn.style.display = 'inline-block';
+    HS.showGameOverUI(isEnhanced ? 'enhanced' : 'normal', score, steps);
+  }
 }
 
 // ── Home confirmation popup ──
@@ -441,6 +454,7 @@ function showHomePopup() {
     $btn.style.display = 'none';
     $undoBtn.style.display = 'none';
     $homeBtn.style.display = 'none';
+    if ($highscoreSave) $highscoreSave.style.display = 'none';
   }
 }
 
@@ -532,6 +546,7 @@ function resumeGame(n) {
   alive = true;
   $btn.style.display = 'none';
   $undoBtn.style.display = 'none';
+  if ($highscoreSave) $highscoreSave.style.display = 'none';
   $msg.textContent = '⏪ Traveled back ' + n + ' steps!';
   history = history.slice(0, history.length - n);
   growQueue = 0;
@@ -750,6 +765,9 @@ document.addEventListener('keydown', e => {
     if (e.key === 'Escape') { closePopup(); return; }
     return;
   }
+
+  // High-score save UI visible — let keys pass through to modal
+  if (HS.isHighScoreSaveUIVisible()) return;
 
   // Wall Breaker: press X
   if (e.key.toLowerCase() === 'x' && alive && isEnhanced) {
