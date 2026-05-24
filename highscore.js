@@ -1,88 +1,54 @@
 /* ─────────────────────────────────────────────────────────────
-   highscore.js — Standalone high-score module
-   Stores scores to localStorage (phase 1), API later.
+   highscore.js — High-score module (cloud API backend)
+   Saves and loads scores from the Rewind Snake API.
    Loads as a regular <script> (not ES module).
    ───────────────────────────────────────────────────────────── */
 
 var HS = {}; // exposed globally
 
 (function () {
-  var LS_KEY = 'snake-highscores';
+  var API_BASE = (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1' || window.location.hostname === '0.0.0.0')
+    ? 'http://localhost:3000'
+    : 'https://rewind-snake.fly.dev';
   var MAX_PER_MODE = 20;
   var DEFAULT_NAME = 'Player';
   var MAX_NAME_LEN = 20;
 
-  /* ── Storage helpers ─────────────────────────────────────── */
+  /* ── API helpers ─────────────────────────────────────────── */
 
-  function loadScores() {
-    try {
-      var raw = localStorage.getItem(LS_KEY);
-      if (raw) return JSON.parse(raw);
-    } catch (e) { /* ignore */ }
-    return { normal: [], enhanced: [] };
-  }
-
-  function saveScores(data) {
-    localStorage.setItem(LS_KEY, JSON.stringify(data));
-  }
-
-  /* ── Sorting: score desc, then steps asc ─────────────────── */
-
-  function sortByScore(a, b) {
-    if (b.score !== a.score) return b.score - a.score;
-    return a.steps - b.steps; // fewer steps wins
-  }
-
-  /* ── Public API ──────────────────────────────────────────── */
-
-  /** Save an entry. If name is falsy, defaults to "Player". */
-  HS.saveScore = function (mode, score, steps, name) {
-    if (score < 1) return;
-    var scores = loadScores();
-    var entry = {
-      name: (typeof name === 'string' && name.trim().length > 0)
-        ? name.trim().slice(0, MAX_NAME_LEN)
-        : DEFAULT_NAME,
+  /** Save a score to the backend. Returns the saved entry. */
+  HS.saveScore = async function (mode, score, steps, name) {
+    if (score < 1) return null;
+    var body = {
+      mode: mode,
       score: score,
       steps: steps,
-      mode: mode,
-      createdAt: Date.now(),
+      name: (typeof name === 'string' && name.trim().length > 0)
+        ? name.trim().slice(0, MAX_NAME_LEN)
+        : 'Player'
     };
-    var list = scores[mode] || [];
-    list.push(entry);
-    list.sort(sortByScore);
-    scores[mode] = list.slice(0, MAX_PER_MODE);
-    saveScores(scores);
-    return entry;
+    var resp = await fetch(API_BASE + '/api/scores', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(body)
+    });
+    if (!resp.ok) {
+      var errText = await resp.text();
+      throw new Error(errText || resp.statusText);
+    }
+    return resp.json();
   };
 
-  /** Return sorted array for a given mode. */
-  HS.getAllScores = function (mode) {
-    var scores = loadScores();
-    return (scores[mode] || []).slice().sort(sortByScore);
-  };
-
-  /** Remove all entries for a mode. */
-  HS.clearMode = function (mode) {
-    var scores = loadScores();
-    scores[mode] = [];
-    saveScores(scores);
-  };
-
-  /** Remove all scores across all modes. */
-  HS.clearAll = function () {
-    saveScores({ normal: [], enhanced: [] });
-  };
-
-  /** Count entries for a mode. */
-  HS.countScores = function (mode) {
-    var scores = loadScores();
-    return (scores[mode] || []).length;
-  };
-
-  /** Check if the given mode has any saved scores. */
-  HS.hasScores = function (mode) {
-    return HS.countScores(mode) > 0;
+  /** Get scores for a specific mode from the backend. */
+  HS.getAllScores = async function (mode) {
+    var url = API_BASE + '/api/scores?mode=' + encodeURIComponent(mode);
+    var resp = await fetch(url);
+    if (!resp.ok) {
+      var errText = await resp.text();
+      throw new Error(errText || resp.statusText);
+    }
+    var data = await resp.json();
+    return data[mode] || [];
   };
 
   /* ── Escape HTML ─────────────────────────────────────────── */
@@ -93,7 +59,17 @@ var HS = {}; // exposed globally
     return div.innerHTML;
   }
 
-  /* ── Game-over save UI (only shows button) ───────────────── */
+  /* ── Toast helper ────────────────────────────────────────── */
+
+  function showToast(msg) {
+    var toast = document.getElementById('toast');
+    if (!toast) return;
+    toast.textContent = msg;
+    toast.classList.add('show');
+    setTimeout(function () { toast.classList.remove('show'); }, 3500);
+  }
+
+  /* ── Game-over save UI ───────────────────────────────────── */
 
   /** Show the save button on the game-over screen. */
   HS.showGameOverUI = function (mode, score, steps) {
@@ -157,14 +133,21 @@ var HS = {}; // exposed globally
     /* Cancel button */
     box.querySelector('#saveScoreCancel').addEventListener('click', closeSaveModal);
 
-    /* Submit button */
-    box.querySelector('#saveScoreSubmit').addEventListener('click', function () {
+    /* Submit button — async save to API */
+    box.querySelector('#saveScoreSubmit').addEventListener('click', async function () {
       var nameInput = document.getElementById('saveScoreNameInput');
       var name = nameInput ? nameInput.value.trim() : '';
-      var entry = HS.saveScore(pendingMode, pendingScore, pendingSteps, name);
-      if (entry) {
+      var submitBtn = document.getElementById('saveScoreSubmit');
+      try {
+        submitBtn.disabled = true;
+        submitBtn.textContent = 'Saving...';
+        var entry = await HS.saveScore(pendingMode, pendingScore, pendingSteps, name);
         showToast('🏆 High score saved! (' + entry.score + ', ' + entry.steps + ' steps)');
+      } catch (err) {
+        showToast('❌ Failed to save score: ' + err.message);
       }
+      submitBtn.disabled = false;
+      submitBtn.textContent = 'Save Score';
       closeSaveModal();
     });
 
@@ -243,11 +226,7 @@ var HS = {}; // exposed globally
         '<button class="hs-tab" data-mode="enhanced" style="padding:6px 20px;border:none;border-radius:8px;cursor:pointer;' +
         'background:#0f3460;color:#e94560;font-size:0.9rem;">Enhanced</button>' +
       '</div>' +
-      '<div id="scoreList" style="min-height:40px;"></div>' +
-      '<div style="margin-top:14px;text-align:center;">' +
-        '<button id="clearModeBtn" style="padding:6px 16px;border:none;border-radius:6px;cursor:pointer;' +
-        'background:#333;color:#aaa;font-size:0.85rem;display:none;">Clear This Mode</button>' +
-      '</div>';
+      '<div id="scoreList" style="min-height:40px;"></div>';
 
     overlay.appendChild(box);
     document.body.appendChild(overlay);
@@ -273,17 +252,6 @@ var HS = {}; // exposed globally
     /* Close via X button */
     box.querySelector('#scoreClose').addEventListener('click', function () {
       overlay.style.display = 'none';
-    });
-
-    /* Clear button */
-    var clearBtn = box.querySelector('#clearModeBtn');
-    clearBtn.addEventListener('click', function () {
-      if (confirm('Clear all scores for ' + currentMode + ' mode?')) {
-        HS.clearMode(currentMode);
-        renderScoresList(currentMode);
-        clearBtn.style.display = 'none';
-        showToast('Scores cleared.');
-      }
     });
 
     /* ESC key */
@@ -312,37 +280,36 @@ var HS = {}; // exposed globally
     if (overlay) overlay.style.display = 'none';
   };
 
-  /** Render scores into the modal's list container. */
+  /** Render scores into the modal's list container (async). */
   function renderScoresList(mode) {
     var listEl = document.getElementById('scoreList');
-    var clearBtn = document.getElementById('clearModeBtn');
     if (!listEl) return;
 
-    var scores = HS.getAllScores(mode);
-    if (scores.length === 0) {
-      listEl.innerHTML = '<p style="color:#666;text-align:center;padding:20px;">No scores yet. Play a game!</p>';
-      if (clearBtn) clearBtn.style.display = 'none';
-    } else {
-      if (clearBtn) {
-        clearBtn.style.display = 'inline-block';
-        var label = mode.charAt(0).toUpperCase() + mode.slice(1);
-        clearBtn.textContent = 'Clear ' + label + ' (' + scores.length + ')';
+    // Show loading state
+    listEl.innerHTML = '<p style="color:#666;text-align:center;padding:20px;">Loading...</p>';
+
+    HS.getAllScores(mode).then(function (scores) {
+      if (scores.length === 0) {
+        listEl.innerHTML = '<p style="color:#666;text-align:center;padding:20px;">No scores yet. Play a game!</p>';
+      } else {
+        var html = '<ol style="list-style:none;padding:0;">';
+        scores.forEach(function (s, i) {
+          var rank = i + 1;
+          var medal = rank === 1 ? '🥇' : rank === 2 ? '🥈' : rank === 3 ? '🥉' : rank;
+          html += '<li style="display:flex;justify-content:space-between;align-items:center;padding:8px 12px;' +
+            'margin-bottom:6px;border-radius:8px;background:#1a1a2e;">' +
+            '<span style="font-weight:bold;color:#e94560;min-width:30px;">' + medal + '</span>' +
+            '<span style="flex:1;margin-left:8px;">' + escapeHTML(s.name) + '</span>' +
+            '<span style="margin-left:12px;color:#4ecca3;font-weight:bold;">' + s.score + '</span>' +
+            '<span style="margin-left:8px;color:#888;font-size:0.85rem;">' + s.steps + ' steps</span>' +
+            '</li>';
+        });
+        html += '</ol>';
+        listEl.innerHTML = html;
       }
-      var html = '<ol style="list-style:none;padding:0;">';
-      scores.forEach(function (s, i) {
-        var rank = i + 1;
-        var medal = rank === 1 ? '🥇' : rank === 2 ? '🥈' : rank === 3 ? '🥉' : rank;
-        html += '<li style="display:flex;justify-content:space-between;align-items:center;padding:8px 12px;' +
-          'margin-bottom:6px;border-radius:8px;background:#1a1a2e;">' +
-          '<span style="font-weight:bold;color:#e94560;min-width:30px;">' + medal + '</span>' +
-          '<span style="flex:1;margin-left:8px;">' + escapeHTML(s.name) + '</span>' +
-          '<span style="margin-left:12px;color:#4ecca3;font-weight:bold;">' + s.score + '</span>' +
-          '<span style="margin-left:8px;color:#888;font-size:0.85rem;">' + s.steps + ' steps</span>' +
-          '</li>';
-      });
-      html += '</ol>';
-      listEl.innerHTML = html;
-    }
+    }).catch(function () {
+      listEl.innerHTML = '<p style="color:#e94560;text-align:center;padding:20px;">Failed to load scores.</p>';
+    });
   }
 
   /* ── Welcome page: add High Scores button ────────────────── */
@@ -376,16 +343,6 @@ var HS = {}; // exposed globally
     var container = document.getElementById('highscoreSave');
     return container && container.style.display !== 'none';
   };
-
-  /* ── Toast helper (shared with game.js) ──────────────────── */
-
-  function showToast(msg) {
-    var toast = document.getElementById('toast');
-    if (!toast) return;
-    toast.textContent = msg;
-    toast.classList.add('show');
-    setTimeout(function () { toast.classList.remove('show'); }, 3000);
-  }
 
   /* ── Init ────────────────────────────────────────────────── */
 

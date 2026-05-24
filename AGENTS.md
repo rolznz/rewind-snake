@@ -5,7 +5,7 @@
 
 ## Overview
 
-A vanilla **Snake game** — a multi-file browser game built with HTML, CSS, and JavaScript. No build step, no dependencies. Features two game modes (Normal and Enhanced), a Lightning payment rewind system, and a full high-score leaderboard.
+A vanilla **Snake game** — a multi-file browser game built with HTML, CSS, and JavaScript. No build step, no dependencies. Features two game modes (Normal and Enhanced), a Lightning payment rewind system, and a full high-score leaderboard backed by a cloud API.
 
 ## Core Files
 
@@ -13,7 +13,7 @@ A vanilla **Snake game** — a multi-file browser game built with HTML, CSS, and
 |------|---------|
 | `index.html` | HTML structure, CSS styling, welcome page, modals, UI overlays (game-over popup, undo popup, countdown, about modal) |
 | `game.js` | Full game logic: rendering, input, collision, scoring, state history, rewind ("Back in Time"), Wall Breaker, payment integration |
-| `highscore.js` | Standalone high-score module: localStorage persistence, save/view modals, leaderboard display, welcome-page integration |
+| `highscore.js` | Standalone high-score module: cloud API persistence, save/view modals, leaderboard display, welcome-page integration |
 
 ## Key Mechanics
 
@@ -27,7 +27,7 @@ A vanilla **Snake game** — a multi-file browser game built with HTML, CSS, and
 - **Wall Breaker** (Enhanced Mode) — press **X** to smash through walls for 3 seconds; costs 5 segments, 100s cooldown
 - **Food types**: Apple (+1 segment, common) and Orange (+10 segments over 10 frames, rare in Enhanced mode)
 - **Particle effects** — flame particles from snake tail during Wall Breaker, explosion sparks on wall destruction
-- **High scores** — saved to `localStorage` under key `snake-highscores`; top 20 per mode; sorted by score desc then steps asc
+- **High scores** — saved/loaded via cloud API at `https://rewind-snake.fly.dev`; top 20 per mode; sorted by score desc then steps asc
 - **Welcome page** — mode selection cards (Normal / Enhanced) with animated transitions
 
 ## UI Layout
@@ -64,5 +64,7 @@ The payment rewind feature is fully wired and live. The skills provide scaffoldi
 - Edit `game.js` for game logic changes
 - Edit `index.html` for styling / layout changes
 - Edit `highscore.js` for high-score module changes
+- Edit `backend/server.js` for backend API changes
 - Run locally with any simple HTTP server (e.g. `npx serve .`)
-- High scores persist in `localStorage` key `snake-highscores`
+- Backend runs on fly.io at `https://rewind-snake.fly.dev` with SQLite storage
+- High scores are saved/loaded via the cloud API (no localStorage)
