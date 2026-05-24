@@ -1,0 +1,424 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<!-- Bitcoin Connect SDK for Lightning payments -->
+<script src="https://esm.sh/@getalby/bitcoin-connect@^3.0.0"></script>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>🐍⏪ Rewind Snake</title>
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body {
+    background: #1a1a2e;
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    flex-direction: column;
+    height: 100vh;
+    font-family: 'Segoe UI', sans-serif;
+    color: #eee;
+  }
+  h1 { margin-bottom: 10px; font-size: 1.6rem; letter-spacing: 2px; }
+  #score { margin-bottom: 8px; font-size: 1.1rem; color: #aaa; }
+  canvas {
+    border: 2px solid #0f3460;
+    border-radius: 6px;
+    background: #16213e;
+  }
+  #msg {
+    margin-top: 12px;
+    font-size: 0.95rem;
+    color: #888;
+    height: 1.4em;
+  }
+  #btn {
+    display: none;
+    margin-top: 12px;
+    padding: 8px 24px;
+    font-size: 1rem;
+    border: none;
+    border-radius: 6px;
+    background: #e94560;
+    color: #fff;
+    cursor: pointer;
+  }
+  #btn:hover { background: #ff6b81; }
+  #undoBtn {
+    display: none;
+    margin-top: 8px;
+    padding: 8px 24px;
+    font-size: 1rem;
+    border: none;
+    border-radius: 6px;
+    background: #0f3460;
+    color: #eee;
+    cursor: pointer;
+  }
+  #undoBtn:hover { background: #1a5298; }
+  #homeBtn {
+    display: none;
+    margin-top: 8px;
+    padding: 8px 24px;
+    font-size: 1rem;
+    border: none;
+    border-radius: 6px;
+    background: #4ecca3;
+    color: #1a1a2e;
+    cursor: pointer;
+  }
+  #homeBtn:hover { background: #6ee7b7; }
+  /* Overlay popup */
+  #popup {
+    display: none;
+    position: fixed;
+    inset: 0;
+    background: rgba(0,0,0,0.6);
+    justify-content: center;
+    align-items: center;
+    z-index: 100;
+  }
+  /* Countdown overlay */
+  #countdown {
+    display: none;
+    position: fixed;
+    inset: 0;
+    background: rgba(22, 33, 62, 0.85);
+    justify-content: center;
+    align-items: center;
+    z-index: 150;
+  }
+  #countdown.show { display: flex; }
+  #countdownNum {
+    font-size: 8rem;
+    font-weight: bold;
+    color: #e94560;
+    text-shadow: 0 0 30px rgba(233, 69, 96, 0.6);
+    animation: countPulse 0.9s ease-in-out;
+  }
+  @keyframes countPulse {
+    0% { transform: scale(1.3); opacity: 0.7; }
+    100% { transform: scale(1); opacity: 1; }
+  }
+  #popup.show { display: flex; }
+  #popupBox {
+    background: #16213e;
+    border: 2px solid #0f3460;
+    border-radius: 10px;
+    padding: 28px 36px;
+    text-align: center;
+    color: #eee;
+  }
+  #popupBox h2 { margin-bottom: 14px; font-size: 1.2rem; }
+  #popupBox input {
+    width: 80px;
+    padding: 6px 10px;
+    font-size: 1.1rem;
+    text-align: center;
+    border: 2px solid #0f3460;
+    border-radius: 6px;
+    background: #1a1a2e;
+    color: #eee;
+    outline: none;
+  }
+  #popupBox .popBtns { margin-top: 16px; display: flex; gap: 10px; justify-content: center; }
+  #popupBox button {
+    padding: 8px 20px;
+    font-size: 1rem;
+    border: none;
+    border-radius: 6px;
+    cursor: pointer;
+    color: #fff;
+  }
+  .popConfirm { background: #e94560; }
+  .popCancel  { background: #0f3460; }
+  #costLine {
+    margin: 10px 0;
+    font-size: 1rem;
+    color: #e94560;
+    font-weight: bold;
+  }
+  #toast {
+    display: none;
+    position: fixed;
+    bottom: 30px;
+    left: 50%;
+    transform: translateX(-50%);
+    background: #e94560;
+    color: #fff;
+    padding: 10px 24px;
+    border-radius: 8px;
+    font-size: 0.95rem;
+    z-index: 200;
+    text-align: center;
+    max-width: 90vw;
+  }
+  #toast.show { display: block; }
+
+  /* Power-up indicator flash */
+  #powerup-flash {
+    position: fixed;
+    top: 80px;
+    left: 50%;
+    transform: translateX(-50%);
+    padding: 8px 20px;
+    border-radius: 8px;
+    font-size: 1.2rem;
+    color: #fff;
+    z-index: 300;
+    pointer-events: none;
+    opacity: 0;
+    transition: opacity 0.3s;
+  }
+  #powerup-flash.show {
+    opacity: 1;
+  }
+  /* ── Welcome Page ── */
+  #welcome {
+    position: fixed;
+    inset: 0;
+    background: #1a1a2e;
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+    align-items: center;
+    z-index: 500;
+    transition: opacity 0.5s, transform 0.5s;
+  }
+  #welcome.hidden {
+    opacity: 0;
+    pointer-events: none;
+    transform: scale(0.95);
+  }
+  #welcome h1 {
+    font-size: 2.4rem;
+    letter-spacing: 3px;
+    margin-bottom: 6px;
+    text-shadow: 0 0 20px rgba(233, 69, 96, 0.4);
+  }
+  #welcome .subtitle {
+    font-size: 1rem;
+    color: #888;
+    margin-bottom: 36px;
+  }
+  .cards {
+    display: flex;
+    gap: 24px;
+    flex-wrap: wrap;
+    justify-content: center;
+  }
+  .card {
+    flex: 1 1 280px;
+    max-width: 320px;
+    padding: 28px 24px;
+    border: 2px solid #0f3460;
+    border-radius: 14px;
+    background: #16213e;
+    cursor: pointer;
+    transition: border-color 0.3s, transform 0.3s, box-shadow 0.3s;
+  }
+  .card:hover {
+    border-color: #e94560;
+    transform: translateY(-6px);
+    box-shadow: 0 8px 30px rgba(233, 69, 96, 0.2);
+  }
+  .card h2 {
+    font-size: 1.4rem;
+    margin-bottom: 12px;
+  }
+  .card .icon {
+    font-size: 2.8rem;
+    margin-bottom: 10px;
+  }
+  .card p {
+    font-size: 0.95rem;
+    color: #aaa;
+    line-height: 1.6;
+  }
+  .card .tag {
+    display: inline-block;
+    margin-top: 14px;
+    padding: 3px 12px;
+    border-radius: 20px;
+    font-size: 0.8rem;
+    font-weight: bold;
+    letter-spacing: 1px;
+  }
+  .card.normal .tag  { background: #0f3460; color: #4ecca3; }
+  .card.enhanced .tag { background: #e9456033; color: #e94560; }
+  .card .play-btn {
+    display: block;
+    margin-top: 16px;
+    padding: 8px 20px;
+    font-size: 0.95rem;
+    font-weight: bold;
+    border: none;
+    border-radius: 8px;
+    cursor: pointer;
+    color: #fff;
+    transition: filter 0.2s;
+  }
+  .card .play-btn:hover { filter: brightness(1.2); }
+  .card.normal .play-btn  { background: #4ecca3; color: #1a1a2e; }
+  .card.enhanced .play-btn { background: #e94560; }
+
+  #controls {
+    margin-top: 14px;
+    font-size: 0.8rem;
+    color: #555;
+  }
+
+  /* ── About Modal ── */
+  #about {
+    display: none;
+    position: fixed;
+    inset: 0;
+    background: rgba(0,0,0,0.7);
+    justify-content: center;
+    align-items: center;
+    z-index: 600;
+  }
+  #about.show { display: flex; }
+  #aboutBox {
+    background: #16213e;
+    border: 2px solid #0f3460;
+    border-radius: 14px;
+    padding: 32px 36px;
+    max-width: 520px;
+    width: 90vw;
+    max-height: 80vh;
+    overflow-y: auto;
+    color: #eee;
+    position: relative;
+  }
+  #aboutBox h2 {
+    margin-bottom: 14px;
+    font-size: 1.5rem;
+    text-align: center;
+  }
+  #aboutBox p {
+    font-size: 0.95rem;
+    color: #ccc;
+    line-height: 1.7;
+  }
+  .close-btn {
+    position: absolute;
+    top: 12px;
+    right: 16px;
+    font-size: 1.2rem;
+    cursor: pointer;
+    color: #888;
+    transition: color 0.2s;
+  }
+  .close-btn:hover { color: #e94560; }
+</style>
+</head>
+<!-- Welcome Page -->
+<div id="welcome">
+  <h1>🐍⏪ Rewind Snake</h1>
+  <p class="subtitle">Choose your mode to begin</p>
+  <div class="cards">
+    <div class="card normal" onclick="startGame('normal')">
+      <div class="icon">🍎</div>
+      <h2>Normal Mode</h2>
+      <p>Eat apples to grow, avoid walls and yourself. Simple, timeless, and always a good time.</p>
+      <span class="tag">CLASSIC</span>
+      <button class="play-btn" onclick="event.stopPropagation(); startGame('normal');">▶ Play</button>
+    </div>
+    <div class="card enhanced" onclick="startGame('enhanced')">
+      <div class="icon">🍊🔥</div>
+      <h2>Enhanced Mode</h2>
+      <p>Eat rare oranges for bonus growth, dodge walls, and smash through them with 🔥Wall Breaker (press X).</p>
+      <span class="tag">+ CHALLENGE</span>
+      <button class="play-btn" onclick="event.stopPropagation(); startGame('enhanced');">▶ Play</button>
+    </div>
+    <div class="card" onclick="showAbout()">
+      <div class="icon">ℹ️</div>
+      <h2>About</h2>
+      <p>A time-traveling snake game with a unique rewind mechanic. Go back in time (for a price) after game over. 🐍⏪</p>
+      <span class="tag">&nbsp;</span>
+      <button class="play-btn" onclick="event.stopPropagation(); showAbout();" style="background:#555;">Read More</button>
+    </div>
+  </div>
+</div>
+
+<!-- Game UI -->
+<div id="gameUI" style="display:none;">
+  <h1>🐍⏪ Rewind Snake</h1>
+  <div id="score">Score: 0</div>
+<div id="powerup-flash"></div>
+<canvas id="game"></canvas>
+<div id="msg"></div>
+<button id="btn" onclick="confirmRestart()">Play Again</button>
+<button id="undoBtn" onclick="showUndoPopup()">⏪ Back in Time</button>
+<button id="homeBtn" onclick="showHomePopup()">🏠 Home</button>
+  <div id="controls">Arrow keys or WASD to move · <b>X</b> for Wall Breaker (Enhanced)</div>
+</div>
+
+<!-- About modal -->
+<div id="about" onclick="if(event.target===this)hideAbout()">
+  <div id="aboutBox">
+    <span class="close-btn" onclick="hideAbout()">✕</span>
+    <h2>🐍 Rewind Snake</h2>
+    <p><strong>Rewind Snake</strong> is a classic snake game with a time-traveling twist.</p>
+    <br>
+    <p><strong>🎮 How to Play</strong></p>
+    <p>Use <em>Arrow keys</em> or <em>WASD</em> to steer your snake. Eat food to grow longer and score points.</p>
+    <br>
+    <p><strong>⏪ Back in Time</strong></p>
+    <p>Made a costly mistake? After game over, rewind by paying a small fee (100 sats/step). Step back through your last moves and recover from the error — giving yourself a second chance to survive!
+    <br>
+    <p><strong>🍊 Enhanced Mode</strong></p>
+    <p>Rare oranges grant bonus growth. Walls appear over time, making survival even more intense.</p>
+    <br>
+    <p><strong>🔥 Wall Breaker</strong></p>
+    <p>In Enhanced Mode, press <em>X</em> to activate Wall Breaker — smashes through walls for 1 second. Costs 3 segments.</p>
+    <br>
+    <p style="text-align:center; color:#888;">Built locally with ❤️ and ⚡ using Qwen3.6-35B-A3B-UD-IQ3_XXS and a NVIDIA GeForce RTX 4060 Laptop GPU</p>
+  </div>
+</div>
+
+<!-- Undo popup -->
+<div id="popup" onclick="if(event.target===this)closePopup()">
+  <div id="popupBox">
+    <h2>⏪ Back in Time</h2>
+    <p>How many steps to go back?</p>
+    <input type="number" id="stepsInput" min="1" max="100" value="1">
+    <div id="costLine">Cost: 100 sats (100/step)</div>
+    <div class="popBtns">
+      <button class="popCancel" onclick="closePopup()">Cancel</button>
+      <button class="popConfirm" id="payBtn" onclick="payAndRewind()">Pay & Rewind</button>
+    </div>
+  </div>
+</div>
+
+<!-- Toast notification -->
+<div id="toast"></div>
+
+<!-- Countdown overlay -->
+<div id="countdown">
+  <div id="countdownNum"></div>
+</div>
+
+<script src="game.js"></script>
+<!-- Initialize Bitcoin Connect at startup -->
+<script>
+  if (typeof window.BitcoinConnect !== 'undefined' && !window._bcInitialized) {
+    window.BitcoinConnect.init({ appName: 'Rewind Snake' });
+    window._bcInitialized = true;
+  }
+
+  /* ── About Modal ── */
+  function showAbout() {
+    document.getElementById('about').classList.add('show');
+  }
+  function hideAbout() {
+    document.getElementById('about').classList.remove('show');
+  }
+  document.addEventListener('keydown', (e) => {
+    if (e.key === 'Escape' && document.getElementById('about').classList.contains('show')) {
+      hideAbout();
+    }
+  });
+</script>
+</body>
+</html>
