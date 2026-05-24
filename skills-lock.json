@@ -6,12 +6,6 @@
       "sourceType": "github",
       "skillPath": "SKILL.md",
       "computedHash": "a8e9ff9f780a3c1982606e3bf6dfc4adf927200240dbc1171c6e4fbf57e9a03e"
-    },
-    "alby-bitcoin-payments": {
-      "source": "getalby/payments-skill",
-      "sourceType": "github",
-      "skillPath": "SKILL.md",
-      "computedHash": "faccbff1c046faaffed8ce6dcf7d2ace77a15a42ad3f2b47f5c1720ed467f18b"
     }
   }
 }
