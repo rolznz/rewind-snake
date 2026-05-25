@@ -16,6 +16,7 @@ db.exec(`
     steps INTEGER NOT NULL,
     mode TEXT NOT NULL CHECK(mode IN ('normal', 'enhanced')),
     state_history TEXT,  -- NULL or JSON array of state snapshots (for replay)
+    state_history_hash TEXT NOT NULL UNIQUE,  -- SHA-256 of state_history JSON, prevents duplicate submissions
     created_at INTEGER NOT NULL,
     ip_hash TEXT NOT NULL
   );
@@ -24,13 +25,13 @@ db.exec(`
 `);
 
 /** Save a score entry. Returns the inserted row. */
-function saveScore({ name, score, steps, mode, createdAt, ipHash, stateHistory }) {
+function saveScore({ name, score, steps, mode, createdAt, ipHash, stateHistory, stateHistoryHash }) {
   const stmt = db.prepare(`
-    INSERT INTO high_scores (name, score, steps, mode, state_history, created_at, ip_hash)
-    VALUES (?, ?, ?, ?, ?, ?, ?)
+    INSERT INTO high_scores (name, score, steps, mode, state_history, state_history_hash, created_at, ip_hash)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?)
   `);
-  const result = stmt.run(name, score, steps, mode, stateHistory || null, createdAt, ipHash);
-  return { id: result.lastInsertRowid, name, score, steps, mode, createdAt, state_history: stateHistory };
+  const result = stmt.run(name, score, steps, mode, stateHistory || null, stateHistoryHash, createdAt, ipHash);
+  return { id: result.lastInsertRowid, name, score, steps, mode, createdAt, state_history: stateHistory, state_history_hash: stateHistoryHash };
 }
 
 /** Get scores for a mode, sorted by score DESC then steps ASC (no state_history). */

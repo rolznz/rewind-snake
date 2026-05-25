@@ -89,16 +89,29 @@ app.post('/api/scores', scoreLimiter, (req, res) => {
     : req.ip;
   const ipHash = crypto.createHash('sha256').update(ip).digest('hex');
 
+  // Generate a hash of stateHistory for deduplication
+  const stateHistoryStr = typeof stateHistory === 'string' ? stateHistory : '';
+  const stateHistoryHash = crypto.createHash('sha256').update(stateHistoryStr).digest('hex');
+
   // Save and return
-  const entry = saveScore({
-    name: playerName,
-    score,
-    steps,
-    mode,
-    createdAt: Date.now(),
-    ipHash,
-    stateHistory: typeof stateHistory === 'string' ? stateHistory : null
-  });
+  let entry;
+  try {
+    entry = saveScore({
+      name: playerName,
+      score,
+      steps,
+      mode,
+      createdAt: Date.now(),
+      ipHash,
+      stateHistory: typeof stateHistory === 'string' ? stateHistory : null,
+      stateHistoryHash
+    });
+  } catch (err) {
+    if (err.message && err.message.includes('UNIQUE constraint failed')) {
+      return res.status(409).json({ error: 'A score with this exact game state has already been submitted.' });
+    }
+    throw err;
+  }
 
   // Parse state_history back for the response (it may be NULL)
   const responseEntry = {
@@ -108,6 +121,7 @@ app.post('/api/scores', scoreLimiter, (req, res) => {
     steps: entry.steps,
     mode: entry.mode,
     state_history: entry.state_history || null,
+    state_history_hash: entry.state_history_hash,
     createdAt: entry.createdAt
   };
 
