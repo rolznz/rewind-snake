@@ -3,3 +3,4 @@ snake.db
 *.db-wal
 *.db-shm
 node_modules/
+deploy.sh
