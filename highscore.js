@@ -98,7 +98,10 @@ var HS = {}; // exposed globally
     if (!toast) return;
     toast.textContent = msg;
     toast.classList.add('show');
-    setTimeout(function () { toast.classList.remove('show'); }, 3500);
+    if (msg.indexOf('✅') !== -1 || msg.indexOf('saved') !== -1) {
+      toast.classList.add('toast-success');
+    }
+    setTimeout(function () { toast.classList.remove('show', 'toast-success'); }, 3500);
   }
 
   /* ── Game-over save UI ───────────────────────────────────── */
@@ -173,7 +176,7 @@ var HS = {}; // exposed globally
         submitBtn.disabled = true;
         submitBtn.textContent = 'Saving...';
         var entry = await HS.saveScore(pendingMode, pendingScore, pendingSteps, name, pendingStateHistory);
-        showToast('🏆 High score saved! (' + entry.score + ', ' + entry.steps + ' steps)');
+        showToast('✅ High score saved! (' + entry.score + ', ' + entry.steps + ' steps)');
       } catch (err) {
         showToast('❌ Failed to save score: ' + err.message);
       }

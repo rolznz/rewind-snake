@@ -174,7 +174,7 @@ let wallBreakerFlames = [];  // flame particles from tail
 let explosionSparks = [];    // sparks from exploded walls
 
 function confirmRestart() {
-  if (confirm('Restart game? Your score will be lost.')) {
+  if (confirm('Restart game? You can rewind to continue playing and increase your score.')) {
     startGame(isEnhanced ? 'enhanced' : 'normal');
   }
 }
@@ -572,7 +572,7 @@ function gameOver() {
 
 // ── Home confirmation popup ──
 function showHomePopup() {
-  if (confirm('Return to the start screen? Your current game will end.')) {
+  if (confirm('Return to the start screen? Your current game will end. You can rewind to continue playing and increase your score.')) {
     clearInterval(loop);
     alive = false;
     $gameUI.style.display = 'none';
