@@ -521,8 +521,6 @@ function gameOver() {
     HS.showGameOverUI(isEnhanced ? 'enhanced' : 'normal', score, steps);
   }
 
-  // Re-size canvas on game over (state changed)
-  resizeGameCanvas();
 }
 
 // ── Home confirmation popup ──
