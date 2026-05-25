@@ -70,6 +70,22 @@
     background: #16213e;
     border-radius: 8px;
   }
+  /* ── Wall Breaker button (mobile only) ── */
+  #wallBreakerBtn {
+    margin: 8px auto;
+    max-width: 280px;
+    display: none;
+  }
+  @media (max-width: 639px) {
+    #wallBreakerBtn {
+      display: block;
+    }
+  }
+  #wallBreakerBtnInner:disabled {
+    background: #555;
+    color: #888;
+    cursor: not-allowed;
+  }
   /* Desktop: buttons in a row */
   @media (min-width: 640px) {
     #btn, #undoBtn, #homeBtn, #saveHighscoreBtn {
@@ -372,7 +388,7 @@
     <div class="card enhanced" onclick="startGame('enhanced')">
       <div class="icon">🍊🔥</div>
       <h2>Enhanced Mode</h2>
-      <p>Eat rare oranges for bonus growth, dodge walls, and smash through them with 🔥Wall Breaker (press X).</p>
+      <p>Eat rare oranges for bonus growth, dodge walls, and smash through them with 🔥Wall Breaker (press X / mobile button).</p>
       <span class="tag">+ CHALLENGE</span>
       <button class="play-btn" onclick="event.stopPropagation(); startGame('enhanced');">▶ Play</button>
     </div>
@@ -403,6 +419,9 @@
   <div id="powerup-flash"></div>
   <canvas id="game"></canvas>
   <div id="msg"></div>
+  <div id="wallBreakerBtn">
+    <button onclick="window.activateMobileWallBreaker();" id="wallBreakerBtnInner" style="width:100%;padding:10px 16px;font-size:1rem;border:none;border-radius:8px;cursor:pointer;white-space:nowrap;font-weight:bold;background:#ff4500;color:#fff;">🔥 Wall Breaker</button>
+  </div>
   <div id="controls"></div>
   <div style="display:flex;flex-wrap:wrap;justify-content:center;gap:8px;margin-top:8px;padding:8px;">
     <button id="undoBtn" onclick="showUndoPopup()">⏪ Back in Time</button>
@@ -431,9 +450,11 @@
     <p>Rare oranges grant bonus growth. Walls appear over time, making survival even more intense.</p>
     <br>
     <p><strong>🔥 Wall Breaker</strong></p>
-    <p>In Enhanced Mode, press <em>X</em> (long press on touchscreen) to activate Wall Breaker — smashes through walls for 1 second. Costs 3 segments.</p>
+    <p>In Enhanced Mode, press <em>X</em> (desktop) or tap the Wall Breaker button (mobile) to activate — smashes through walls for 3 seconds. Costs 3 segments.</p>
     <br>
     <p style="text-align:center; color:#888;">Built locally with ❤️ and ⚡ using Qwen3.6-35B-A3B-UD-IQ3_XXS and a NVIDIA GeForce RTX 4060 Laptop GPU</p>
+    <br>
+    <p style="text-align:center; color:#888;">💡 <strong>Mobile PWA:</strong> Install this game as an app on your phone! Open in Chrome or Safari, then tap "Add to Home Screen" from your browser menu for a full-screen experience.</p>
   </div>
 </div>
 

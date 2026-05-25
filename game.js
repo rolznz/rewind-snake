@@ -27,6 +27,8 @@ const $toast = document.getElementById('toast');
 const $flash = document.getElementById('powerup-flash');
 const $controls = document.getElementById('controls');
 const $saveHighscoreBtn = document.getElementById('saveHighscoreBtn');
+const $wallBreakerBtn = document.getElementById('wallBreakerBtn');
+const $wallBreakerBtnInner = document.getElementById('wallBreakerBtnInner');
 
 // --- Mode ---
 let isEnhanced = false;
@@ -43,55 +45,131 @@ function resizeGameCanvas() {
 
 // --- Touch controls ---
 let touchStartX = 0, touchStartY = 0;
-const SWIPE_THRESHOLD = 30;
+let touchMoved = false;
+const SWIPE_THRESHOLD = 15; // lowered from 30 for easier mobile swipes
 let longPressTimer = null;
+const LONG_PRESS_DELAY = 1000; // 1s long-press for Wall Breaker
+let directionQueue = []; // queue rapid swipe directions
 
 function setupTouchControls() {
-  canvas.addEventListener('touchstart', function (e) {
-    e.preventDefault();
-    touchStartX = e.touches[0].clientX;
-    touchStartY = e.touches[0].clientY;
+  // Remove old listeners (in case setupTouchControls called multiple times)
+  document.removeEventListener('touchstart', _gameTouchStart);
+  document.removeEventListener('touchmove', _gameTouchMove);
+  document.removeEventListener('touchend', _gameTouchEnd);
 
-    // Long-press for Wall Breaker (Enhanced mode only)
-    if (alive && isEnhanced) {
-      longPressTimer = setTimeout(function () {
+  document.addEventListener('touchstart', _gameTouchStart, { passive: false });
+  document.addEventListener('touchmove', _gameTouchMove, { passive: false });
+  document.addEventListener('touchend', _gameTouchEnd, { passive: false });
+}
+
+function _gameTouchStart(e) {
+  if (!alive) return;
+  // Skip touches on the wall breaker button — let the button handle its own click
+  const target = e.target;
+  if ($wallBreakerBtn && $wallBreakerBtnInner && ($wallBreakerBtnInner === target || $wallBreakerBtn.contains(target))) return;
+
+  e.preventDefault();
+  touchStartX = e.touches[0].clientX;
+  touchStartY = e.touches[0].clientY;
+  touchMoved = false;
+
+  // Long-press for Wall Breaker (Enhanced mode only)
+  if (alive && isEnhanced) {
+    longPressTimer = setTimeout(function () {
+      if (!touchMoved) {
         activateWallBreaker();
-        longPressTimer = null;
-      }, 500);
-    }
-  }, { passive: false });
-
-  canvas.addEventListener('touchmove', function (e) {
-    e.preventDefault();
-    if (longPressTimer) {
-      clearTimeout(longPressTimer);
+      }
       longPressTimer = null;
-    }
-  }, { passive: false });
+    }, LONG_PRESS_DELAY);
+  }
+}
 
-  canvas.addEventListener('touchend', function (e) {
-    e.preventDefault();
-    if (longPressTimer) {
-      clearTimeout(longPressTimer);
-      longPressTimer = null;
-      return;
-    }
+function _gameTouchMove(e) {
+  if (!alive) return;
+  // Skip touches on the wall breaker button
+  const target = e.target;
+  if ($wallBreakerBtn && $wallBreakerBtnInner && ($wallBreakerBtnInner === target || $wallBreakerBtn.contains(target))) return;
 
-    const dx = e.changedTouches[0].clientX - touchStartX;
-    const dy = e.changedTouches[0].clientY - touchStartY;
-    if (Math.abs(dx) < SWIPE_THRESHOLD && Math.abs(dy) < SWIPE_THRESHOLD) return;
-    if (Math.abs(dx) > Math.abs(dy)) {
-      setDirection(dx > 0 ? 1 : -1, 0);
-    } else {
-      setDirection(0, dy > 0 ? 1 : -1);
-    }
-  }, { passive: false });
+  e.preventDefault();
+
+  // Track if finger moved significantly
+  const dx = Math.abs(e.touches[0].clientX - touchStartX);
+  const dy = Math.abs(e.touches[0].clientY - touchStartY);
+  if (dx > 10 || dy > 10) {
+    touchMoved = true;
+  }
+
+  // Cancel long-press if finger moved
+  if (longPressTimer) {
+    clearTimeout(longPressTimer);
+    longPressTimer = null;
+  }
+}
+
+function _gameTouchEnd(e) {
+  if (!alive) return;
+  // Skip touches on the wall breaker button
+  const target = e.target;
+  if ($wallBreakerBtn && $wallBreakerBtnInner && ($wallBreakerBtnInner === target || $wallBreakerBtn.contains(target))) return;
+
+  e.preventDefault();
+
+  // Don't treat long-press touch as a swipe
+  if (longPressTimer) {
+    clearTimeout(longPressTimer);
+    longPressTimer = null;
+    return;
+  }
+
+  const dx = e.changedTouches[0].clientX - touchStartX;
+  const dy = e.changedTouches[0].clientY - touchStartY;
+  if (Math.abs(dx) < SWIPE_THRESHOLD && Math.abs(dy) < SWIPE_THRESHOLD) return;
+
+  const dir = Math.abs(dx) > Math.abs(dy)
+    ? { x: dx > 0 ? 1 : -1, y: 0 }
+    : { x: 0, y: dy > 0 ? 1 : -1 };
+
+  // Queue direction so rapid consecutive swipes are respected
+  directionQueue.push(dir);
+  processDirectionQueue();
+}
+
+function processDirectionQueue() {
+  // Process one direction per tick (prevents eating more than 2 turns)
+  if (directionQueue.length > 2) {
+    directionQueue = directionQueue.slice(0, 2);
+  }
+  while (directionQueue.length > 0) {
+    const next = directionQueue.shift();
+    if (next.x === -dir.x && next.y === -dir.y) continue; // skip 180° turn
+    setDirection(next.x, next.y);
+    break; // one change per call, rest queued
+  }
 }
 
 function setDirection(dx, dy) {
   // Prevent 180-degree turns
   if (dx === -dir.x && dy === -dir.y) return;
   nextDir = { x: dx, y: dy };
+}
+
+// Called during update() to consume queued directions
+function consumeDirectionQueue() {
+  // Allow up to 2 queued direction changes (for rapid double-turns on mobile)
+  let processed = 0;
+  while (directionQueue.length > 0 && processed < 2) {
+    const next = directionQueue.shift();
+    if (next.x === -dir.x && next.y === -dir.y) continue;
+    nextDir = { x: next.x, y: next.y };
+    processed++;
+  }
+}
+
+// --- Process direction queue each game tick (for rapid mobile turns) ---
+const originalUpdate = update;
+function update() {
+  consumeDirectionQueue();
+  return originalUpdate.apply(this, arguments);
 }
 
 // Handle window resize with debounce
@@ -166,13 +244,19 @@ function startGame(mode) {
   hideWelcome();
   // Detect touch device and show appropriate controls message
   const isTouch = 'ontouchstart' in window || navigator.maxTouchPoints > 0;
-  $controls.textContent = isTouch
-    ? (isEnhanced
-        ? '👆 Swipe to move · Hold for Wall Breaker (Enhanced)' 
-        : '👆 Swipe to move')
-    : (isEnhanced
-        ? 'Arrow keys or WASD to move · X for Wall Breaker'
-        : 'Arrow keys or WASD to move');
+  if (isTouch) {
+    $controls.textContent = '👆 Swipe to move';
+  } else {
+    $controls.textContent = isEnhanced
+      ? 'Arrow keys or WASD to move · X for Wall Breaker'
+      : 'Arrow keys or WASD to move';
+  }
+
+  // Show Wall Breaker button on mobile in Enhanced mode
+  if (isTouch && isEnhanced) {
+    $wallBreakerBtn.style.display = ''; // restore CSS media query
+    updateWallBreakerButton();
+  }
   updateScoreDisplay();
   $msg.textContent = '';
   $btn.style.display = 'none';
@@ -320,6 +404,7 @@ function update() {
       showFlash('🍎 Apple +1', '#e94560');
     }
     updateScoreDisplay();
+    updateWallBreakerButton();
     placeFood();
     
     if (isEnhanced) {
@@ -333,6 +418,7 @@ function update() {
     if (isEnhanced && growQueue > 0) {
       growQueue--;
       // skip pop() — tail stays, body extends
+      if (isEnhanced) updateWallBreakerButton();
     } else {
       snake.pop();
     }
@@ -515,6 +601,9 @@ function gameOver() {
   }
   $homeBtn.style.display = 'inline-block';
 
+  // Hide Wall Breaker button on game over screen
+  if ($wallBreakerBtn) $wallBreakerBtn.style.display = 'none';
+
   // Show high-score save button
   if ($saveHighscoreBtn) {
     $saveHighscoreBtn.style.display = 'inline-block';
@@ -635,6 +724,9 @@ function resumeGame(n) {
   wallBreakerFlames = [];
   loop = setInterval(update, 100);
   draw();
+  // Show Wall Breaker button again after rewind resumes
+  if (isEnhanced && $wallBreakerBtn) $wallBreakerBtn.style.display = ''; // restore CSS media query
+  updateWallBreakerButton();
 }
 
 // --- Toast notification ---
@@ -787,6 +879,7 @@ function activateWallBreaker() {
   }
   if (wallBreakerCooldown) {
     showToast('⏳ Wall Breaker on cooldown!');
+    updateWallBreakerButton();
     return;
   }
   if (snake.length < MIN_SEGMENTS_FOR_BREAKER) {
@@ -804,8 +897,31 @@ function activateWallBreaker() {
   wallBreakerActive = true;
   wallBreakerTimer = WALL_BREAKER_DURATION;
   wallBreakerFlames = [];
-  showToast('🔥 Wall Breaker! 1s');
+  updateWallBreakerButton();
+  showToast('🔥 Wall Breaker! 3s');
 }
+
+function updateWallBreakerButton() {
+  if (!$wallBreakerBtnInner) return;
+  if (wallBreakerActive) {
+    $wallBreakerBtnInner.textContent = '🔥 Active!';
+    $wallBreakerBtnInner.disabled = true;
+  } else if (wallBreakerCooldown) {
+    $wallBreakerBtnInner.textContent = '⏳ Cooldown';
+    $wallBreakerBtnInner.disabled = true;
+  } else if (snake.length < MIN_SEGMENTS_FOR_BREAKER) {
+    $wallBreakerBtnInner.textContent = 'Need ' + MIN_SEGMENTS_FOR_BREAKER + '+ segments';
+    $wallBreakerBtnInner.disabled = true;
+  } else {
+    $wallBreakerBtnInner.textContent = '🔥 Wall Breaker';
+    $wallBreakerBtnInner.disabled = false;
+  }
+}
+
+// Mobile button handler
+window.activateMobileWallBreaker = function () {
+  activateWallBreaker();
+};
 
 function deactivateWallBreaker() {
   wallBreakerActive = false;
@@ -816,9 +932,11 @@ function deactivateWallBreaker() {
   $flash.textContent = '💥 Wall Breaker depleted';
   $flash.style.backgroundColor = '#ff4500';
   $flash.classList.add('show');
+  updateWallBreakerButton();
   setTimeout(() => {
     $flash.classList.remove('show');
     wallBreakerCooldown = false;
+    updateWallBreakerButton();
   }, WALL_BREAKER_COOLDOWN);
 }
 
