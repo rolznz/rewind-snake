@@ -1,11 +1,11 @@
 const canvas = document.getElementById('game');
 const ctx = canvas.getContext('2d');
-const TILE = 20;
-const COLS = 25;
-const ROWS = 25;
+const GRID = 25;
 const MAX_HISTORY = 100;  // max states kept (for rewind + replay capture)
-canvas.width = COLS * TILE;
-canvas.height = ROWS * TILE;
+
+let tileSize = 20; // dynamically computed
+canvas.width = GRID * tileSize;
+canvas.height = GRID * tileSize;
 
 let snake, dir, nextDir, food, score, alive, loop;
 let steps = 0; // total steps taken in current game
@@ -26,11 +26,80 @@ const $payBtn = document.getElementById('payBtn');
 const $toast = document.getElementById('toast');
 const $flash = document.getElementById('powerup-flash');
 const $controls = document.getElementById('controls');
-const $highscoreSave = document.getElementById('highscoreSave');
 const $saveHighscoreBtn = document.getElementById('saveHighscoreBtn');
 
 // --- Mode ---
 let isEnhanced = false;
+
+// --- Responsive canvas ---
+function resizeGameCanvas() {
+  const maxW = Math.min(window.innerWidth - 20, window.innerHeight * 0.55);
+  tileSize = Math.floor(maxW / GRID);
+  if (tileSize < 10) tileSize = 10;
+  if (tileSize > 24) tileSize = 24;
+  canvas.width = GRID * tileSize;
+  canvas.height = GRID * tileSize;
+}
+
+// --- Touch controls ---
+let touchStartX = 0, touchStartY = 0;
+const SWIPE_THRESHOLD = 30;
+let longPressTimer = null;
+
+function setupTouchControls() {
+  canvas.addEventListener('touchstart', function (e) {
+    e.preventDefault();
+    touchStartX = e.touches[0].clientX;
+    touchStartY = e.touches[0].clientY;
+
+    // Long-press for Wall Breaker (Enhanced mode only)
+    if (alive && isEnhanced) {
+      longPressTimer = setTimeout(function () {
+        activateWallBreaker();
+        longPressTimer = null;
+      }, 500);
+    }
+  }, { passive: false });
+
+  canvas.addEventListener('touchmove', function (e) {
+    e.preventDefault();
+    if (longPressTimer) {
+      clearTimeout(longPressTimer);
+      longPressTimer = null;
+    }
+  }, { passive: false });
+
+  canvas.addEventListener('touchend', function (e) {
+    e.preventDefault();
+    if (longPressTimer) {
+      clearTimeout(longPressTimer);
+      longPressTimer = null;
+      return;
+    }
+
+    const dx = e.changedTouches[0].clientX - touchStartX;
+    const dy = e.changedTouches[0].clientY - touchStartY;
+    if (Math.abs(dx) < SWIPE_THRESHOLD && Math.abs(dy) < SWIPE_THRESHOLD) return;
+    if (Math.abs(dx) > Math.abs(dy)) {
+      setDirection(dx > 0 ? 1 : -1, 0);
+    } else {
+      setDirection(0, dy > 0 ? 1 : -1);
+    }
+  }, { passive: false });
+}
+
+function setDirection(dx, dy) {
+  // Prevent 180-degree turns
+  if (dx === -dir.x && dy === -dir.y) return;
+  nextDir = { x: dx, y: dy };
+}
+
+// Handle window resize with debounce
+let resizeTimeout;
+window.addEventListener('resize', function () {
+  clearTimeout(resizeTimeout);
+  resizeTimeout = setTimeout(resizeGameCanvas, 150);
+});
 
 // --- Payment state ---
 let paymentLoading = false;
@@ -95,15 +164,23 @@ function startGame(mode) {
   explosionSparks = [];
   isEnhanced = mode === 'enhanced';
   hideWelcome();
-  $controls.textContent = isEnhanced
-    ? 'Arrow keys or WASD to move · X for Wall Breaker'
-    : 'Arrow keys or WASD to move';
+  // Detect touch device and show appropriate controls message
+  const isTouch = 'ontouchstart' in window || navigator.maxTouchPoints > 0;
+  $controls.textContent = isTouch
+    ? (isEnhanced
+        ? '👆 Swipe to move · Hold for Wall Breaker (Enhanced)' 
+        : '👆 Swipe to move')
+    : (isEnhanced
+        ? 'Arrow keys or WASD to move · X for Wall Breaker'
+        : 'Arrow keys or WASD to move');
   updateScoreDisplay();
   $msg.textContent = '';
   $btn.style.display = 'none';
   $undoBtn.style.display = 'none';
-  $homeBtn.style.display = 'inline-block';
-  if ($highscoreSave) $highscoreSave.style.display = 'none';
+  $homeBtn.style.display = 'none';
+  if ($saveHighscoreBtn) $saveHighscoreBtn.style.display = 'none';
+  resizeGameCanvas();
+  setupTouchControls();
   placeFood();
   draw();
   startCountdown(() => {
@@ -116,8 +193,8 @@ function placeFood() {
   let attempts = 0;
   do {
     pos = {
-      x: Math.floor(Math.random() * COLS),
-      y: Math.floor(Math.random() * ROWS),
+      x: Math.floor(Math.random() * GRID),
+      y: Math.floor(Math.random() * GRID),
       type: FOOD_APPLE
     };
     attempts++;
@@ -163,8 +240,8 @@ function spawnWall() {
   const attempts = 100;
   for (let i = 0; i < attempts; i++) {
     const orientation = Math.random() < 0.5 ? 'h' : 'v';
-    const x1 = Math.floor(Math.random() * (COLS - (orientation === 'h' ? 1 : 0)));
-    const y1 = Math.floor(Math.random() * (ROWS - (orientation === 'v' ? 1 : 0)));
+    const x1 = Math.floor(Math.random() * (GRID - (orientation === 'h' ? 1 : 0)));
+    const y1 = Math.floor(Math.random() * (GRID - (orientation === 'v' ? 1 : 0)));
     const x2 = orientation === 'h' ? x1 + 1 : x1;
     const y2 = orientation === 'v' ? y1 + 1 : y1;
     // Safety zone: 6×6 area around snake head
@@ -201,7 +278,7 @@ function update() {
   const head = { x: snake[0].x + dir.x, y: snake[0].y + dir.y };
 
   // Wall bounds collision (unchanged)
-  if (head.x < 0 || head.x >= COLS || head.y < 0 || head.y >= ROWS) {
+  if (head.x < 0 || head.x >= GRID || head.y < 0 || head.y >= GRID) {
     return gameOver();
   }
 
@@ -273,8 +350,8 @@ function update() {
   if (wallBreakerActive && Math.random() < 0.6) {
     const tail = snake[snake.length - 1];
     wallBreakerFlames.push({
-      x: tail.x * TILE + TILE / 2,
-      y: tail.y * TILE + TILE / 2,
+      x: tail.x * tileSize + tileSize / 2,
+      y: tail.y * tileSize + tileSize / 2,
       vx: (Math.random() - 0.5) * 1.5,
       vy: -(Math.random() * 1.5 + 0.5),
       life: 1,
@@ -312,11 +389,11 @@ function draw() {
   // Grid (subtle)
   ctx.strokeStyle = '#1a2744';
   ctx.lineWidth = 0.5;
-  for (let i = 0; i <= COLS; i++) {
-    ctx.beginPath(); ctx.moveTo(i * TILE, 0); ctx.lineTo(i * TILE, canvas.height); ctx.stroke();
+  for (let i = 0; i <= GRID; i++) {
+    ctx.beginPath(); ctx.moveTo(i * tileSize, 0); ctx.lineTo(i * tileSize, canvas.height); ctx.stroke();
   }
-  for (let i = 0; i <= ROWS; i++) {
-    ctx.beginPath(); ctx.moveTo(0, i * TILE); ctx.lineTo(canvas.width, i * TILE); ctx.stroke();
+  for (let i = 0; i <= GRID; i++) {
+    ctx.beginPath(); ctx.moveTo(0, i * tileSize); ctx.lineTo(canvas.width, i * tileSize); ctx.stroke();
   }
 
   // Draw walls
@@ -345,7 +422,7 @@ function draw() {
       ctx.fillStyle = `rgb(30, ${g}, 100)`;
     }
     ctx.beginPath();
-    ctx.roundRect(s.x * TILE + 1, s.y * TILE + 1, TILE - 2, TILE - 2, 4);
+    ctx.roundRect(s.x * tileSize + 1, s.y * tileSize + 1, tileSize - 2, tileSize - 2, 4);
     ctx.fill();
   });
 
@@ -374,15 +451,15 @@ function drawFood() {
   if (food.type === FOOD_ORANGE) {
     ctx.fillStyle = '#f5a623';  // orange
     ctx.beginPath();
-    ctx.arc(food.x * TILE + TILE / 2, food.y * TILE + TILE / 2, TILE / 2 - 2, 0, Math.PI * 2);
+    ctx.arc(food.x * tileSize + tileSize / 2, food.y * tileSize + tileSize / 2, tileSize / 2 - 2, 0, Math.PI * 2);
     ctx.fill();
     // Small green stem
     ctx.fillStyle = '#4ecca3';
-    ctx.fillRect(food.x * TILE + TILE / 2 - 1, food.y * TILE + 3, 2, 5);
+    ctx.fillRect(food.x * tileSize + tileSize / 2 - 1, food.y * tileSize + 3, 2, 5);
   } else {
     ctx.fillStyle = '#e94560';  // red
     ctx.beginPath();
-    ctx.arc(food.x * TILE + TILE / 2, food.y * TILE + TILE / 2, TILE / 2 - 2, 0, Math.PI * 2);
+    ctx.arc(food.x * tileSize + tileSize / 2, food.y * tileSize + tileSize / 2, tileSize / 2 - 2, 0, Math.PI * 2);
     ctx.fill();
     // Food glow
     ctx.shadowColor = '#e94560';
@@ -394,7 +471,7 @@ function drawFood() {
 
 function drawWalls() {
   for (const w of walls) {
-    // Draw two 20×20 squares for the wall segments
+    // Draw wall segments
     const segments = [
       { x: w.x1, y: w.y1 },
       { x: w.x2, y: w.y2 }
@@ -402,16 +479,16 @@ function drawWalls() {
     for (const seg of segments) {
       // Gray brick color
       ctx.fillStyle = 'rgba(145, 145, 150, 0.9)';
-      ctx.fillRect(seg.x * TILE + 1, seg.y * TILE + 1, TILE - 2, TILE - 2);
+      ctx.fillRect(seg.x * tileSize + 1, seg.y * tileSize + 1, tileSize - 2, tileSize - 2);
       // Brick-like border
       ctx.strokeStyle = 'rgba(100, 100, 105, 0.8)';
       ctx.lineWidth = 1;
-      ctx.strokeRect(seg.x * TILE + 2, seg.y * TILE + 2, TILE - 4, TILE - 4);
+      ctx.strokeRect(seg.x * tileSize + 2, seg.y * tileSize + 2, tileSize - 4, tileSize - 4);
       // Small X mark for danger
       ctx.strokeStyle = 'rgba(180, 180, 185, 0.55)';
       ctx.lineWidth = 1.5;
-      const cx = seg.x * TILE + TILE / 2;
-      const cy = seg.y * TILE + TILE / 2;
+      const cx = seg.x * tileSize + tileSize / 2;
+      const cy = seg.y * tileSize + tileSize / 2;
       ctx.beginPath();
       ctx.moveTo(cx - 4, cy - 4);
       ctx.lineTo(cx + 4, cy + 4);
@@ -439,11 +516,13 @@ function gameOver() {
   $homeBtn.style.display = 'inline-block';
 
   // Show high-score save button
-  if ($highscoreSave) $highscoreSave.style.display = 'block';
   if ($saveHighscoreBtn) {
     $saveHighscoreBtn.style.display = 'inline-block';
     HS.showGameOverUI(isEnhanced ? 'enhanced' : 'normal', score, steps);
   }
+
+  // Re-size canvas on game over (state changed)
+  resizeGameCanvas();
 }
 
 // ── Home confirmation popup ──
@@ -457,7 +536,7 @@ function showHomePopup() {
     $btn.style.display = 'none';
     $undoBtn.style.display = 'none';
     $homeBtn.style.display = 'none';
-    if ($highscoreSave) $highscoreSave.style.display = 'none';
+    if ($saveHighscoreBtn) $saveHighscoreBtn.style.display = 'none';
   }
 }
 
@@ -549,7 +628,7 @@ function resumeGame(n) {
   alive = true;
   $btn.style.display = 'none';
   $undoBtn.style.display = 'none';
-  if ($highscoreSave) $highscoreSave.style.display = 'none';
+  if ($saveHighscoreBtn) $saveHighscoreBtn.style.display = 'none';
   $msg.textContent = '⏪ Traveled back ' + n + ' steps!';
   history = history.slice(0, history.length - n);
   growQueue = 0;
@@ -749,8 +828,8 @@ function spawnExplosionSparks(cx, cy) {
     const angle = Math.random() * Math.PI * 2;
     const speed = Math.random() * 3 + 1;
     explosionSparks.push({
-      x: cx * TILE + TILE / 2,
-      y: cy * TILE + TILE / 2,
+      x: cx * tileSize + tileSize / 2,
+      y: cy * tileSize + tileSize / 2,
       vx: Math.cos(angle) * speed,
       vy: Math.sin(angle) * speed,
       life: 1,
@@ -787,9 +866,7 @@ document.addEventListener('keydown', e => {
   const d = map[e.key];
   if (!d) return;
   e.preventDefault();
-  // Prevent 180-degree turns
-  if (d.x === -dir.x && d.y === -dir.y) return;
-  nextDir = d;
+  setDirection(d.x, d.y);
 });
 
 // Initial start is from welcome page, so no auto-start
@@ -799,7 +876,6 @@ document.addEventListener('keydown', e => {
 window._snakeGameState = {
   getHistory: function () { return history; },
   isEnhanced: isEnhanced,
-  TILE: TILE,
-  COLS: COLS,
-  ROWS: ROWS
+  tileSize: tileSize,
+  GRID: GRID
 };

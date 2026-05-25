@@ -5,8 +5,13 @@
 <script src="https://esm.sh/@getalby/bitcoin-connect@^3.0.0"></script>
 <script defer src="https://cloud.umami.is/script.js" data-website-id="c17c11d1-79b5-403e-84fc-4ba3fe86a348"></script>
 <meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<meta name="theme-color" content="#1a1a2e">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<link rel="icon" href="icon-192.png" type="image/png">
 <title>🐍⏪ Rewind Snake</title>
+<link rel="manifest" href="manifest.json">
 <style>
   * { margin: 0; padding: 0; box-sizing: border-box; }
   body {
@@ -15,7 +20,8 @@
     justify-content: center;
     align-items: center;
     flex-direction: column;
-    height: 100vh;
+    min-height: 100vh;
+    overflow-y: auto;
     font-family: 'Segoe UI', sans-serif;
     color: #eee;
   }
@@ -25,6 +31,7 @@
     border: 2px solid #0f3460;
     border-radius: 6px;
     background: #16213e;
+    touch-action: none; /* disable browser zoom/pan on canvas */
   }
   #msg {
     margin-top: 12px;
@@ -32,60 +39,44 @@
     color: #888;
     height: 1.4em;
   }
-  #btn {
+  /* ── Game buttons (mobile: stacked) ── */
+  #btn, #undoBtn, #homeBtn, #saveHighscoreBtn {
     display: none;
-    margin-top: 12px;
-    padding: 8px 24px;
-    font-size: 1rem;
-    border: none;
-    border-radius: 6px;
-    background: #e94560;
-    color: #fff;
-    cursor: pointer;
-  }
-  #btn:hover { background: #ff6b81; }
-  #undoBtn {
-    display: none;
-    margin-top: 8px;
-    padding: 8px 24px;
-    font-size: 1rem;
-    border: none;
-    border-radius: 6px;
-    background: #0f3460;
-    color: #eee;
-    cursor: pointer;
-  }
-  #undoBtn:hover { background: #1a5298; }
-  #homeBtn {
-    display: none;
-    margin-top: 8px;
-    padding: 8px 24px;
-    font-size: 1rem;
-    border: none;
-    border-radius: 6px;
-    background: #4ecca3;
-    color: #1a1a2e;
-    cursor: pointer;
-  }
-  #homeBtn:hover { background: #6ee7b7; }
-  /* ── High-score save UI ── */
-  #highscoreSave {
-    display: none;
-    margin-top: 8px;
-    text-align: center;
-  }
-  #saveHighscoreBtn {
-    display: none;
-    padding: 8px 20px;
+    padding: 10px 16px;
     font-size: 0.95rem;
     border: none;
     border-radius: 6px;
-    background: #f5a623;
-    color: #1a1a2e;
-    font-weight: bold;
+    flex: 1 1 0;
     cursor: pointer;
+    white-space: nowrap;
   }
+  #btn { background: #e94560; color: #fff; }
+  #btn:hover { background: #ff6b81; }
+  #undoBtn { background: #0f3460; color: #eee; }
+  #undoBtn:hover { background: #1a5298; }
+  #homeBtn { background: #4ecca3; color: #1a1a2e; }
+  #homeBtn:hover { background: #6ee7b7; }
+  #saveHighscoreBtn { background: #f5a623; color: #1a1a2e; font-weight: bold; }
   #saveHighscoreBtn:hover { background: #f7b94b; }
+  /* ── Control hints (always visible) ── */
+  #controls {
+    display: block;
+    margin: 12px auto;
+    font-size: 0.85rem;
+    color: #777;
+    text-align: center;
+    max-width: 320px;
+    padding: 8px 16px;
+    background: #16213e;
+    border-radius: 8px;
+  }
+  /* Desktop: buttons in a row */
+  @media (min-width: 640px) {
+    #btn, #undoBtn, #homeBtn, #saveHighscoreBtn {
+      flex: 0 1 auto;
+      padding: 10px 16px;
+    }
+  }
   /* ── Overlay popup ── */
   #popup {
     display: none;
@@ -108,7 +99,7 @@
   }
   #countdown.show { display: flex; }
   #countdownNum {
-    font-size: 8rem;
+    font-size: clamp(4rem, 20vw, 8rem);
     font-weight: bold;
     color: #e94560;
     text-shadow: 0 0 30px rgba(233, 69, 96, 0.6);
@@ -176,7 +167,7 @@
   /* Power-up indicator flash */
   #powerup-flash {
     position: fixed;
-    top: 80px;
+    top: 4vh;
     left: 50%;
     transform: translateX(-50%);
     padding: 8px 20px;
@@ -191,26 +182,19 @@
   #powerup-flash.show {
     opacity: 1;
   }
-  /* ── Welcome Page ── */
+  /* ── Welcome Page ── (mobile-first: natural scroll) ── */
   #welcome {
-    position: fixed;
-    inset: 0;
-    background: #1a1a2e;
     display: flex;
     flex-direction: column;
-    justify-content: center;
     align-items: center;
+    justify-content: flex-start;
+    padding: 48px 20px 100px;
     z-index: 500;
     transition: opacity 0.5s, transform 0.5s;
   }
-  #welcome.hidden {
-    opacity: 0;
-    pointer-events: none;
-    transform: scale(0.95);
-  }
   #welcome h1 {
-    font-size: 2.4rem;
-    letter-spacing: 3px;
+    font-size: 1.6rem;
+    letter-spacing: 2px;
     margin-bottom: 6px;
     text-shadow: 0 0 20px rgba(233, 69, 96, 0.4);
   }
@@ -219,6 +203,12 @@
     color: #888;
     margin-bottom: 36px;
   }
+  #welcome.hidden {
+    opacity: 0;
+    pointer-events: none;
+    transform: scale(0.95);
+  }
+
   .cards {
     display: flex;
     gap: 24px;
@@ -280,11 +270,32 @@
   .card.normal .play-btn  { background: #4ecca3; color: #1a1a2e; }
   .card.enhanced .play-btn { background: #e94560; }
 
-  #controls {
-    margin-top: 14px;
-    font-size: 0.8rem;
-    color: #555;
+  /* ── High Scores button on welcome ── */
+  #welcome .card[data-mode="highscores"] {
+    border-color: #f5a623;
   }
+  #welcome .card[data-mode="highscores"]:hover {
+    border-color: #f7b94b;
+  }
+
+  /* ── Desktop: fixed, centered welcome page ── */
+  @media (min-width: 640px) {
+    #welcome {
+      position: fixed;
+      inset: 0;
+      background: #1a1a2e;
+      justify-content: center;
+      padding: 0;
+      overflow-y: auto;
+      max-height: 100vh;
+    }
+    #welcome h1 { font-size: 2.4rem; }
+    #welcome .subtitle { font-size: 1rem; margin-bottom: 36px; }
+    .card .icon { font-size: 3.2rem; }
+    .card h2 { font-size: 1.6rem; }
+  }
+
+  /* ── About Modal ── */
 
   /* ── About Modal ── */
   #about {
@@ -329,6 +340,21 @@
     transition: color 0.2s;
   }
   .close-btn:hover { color: #e94560; }
+
+  /* ── HS Modal tabs ── */
+  .hs-tab.active { outline: 2px solid currentColor; outline-offset: 2px; }
+  .replay-btn {
+    background: #e94560;
+    border: none;
+    border-radius: 4px;
+    color: #fff;
+    cursor: pointer;
+    padding: 4px 10px;
+    font-size: 0.9rem;
+  }
+  .replay-btn:hover { background: #ff6b81; }
+  /* ── Replay overlay ── */
+  #replayOverlay.show { display: flex !important; }
 </style>
 </head>
 <!-- Welcome Page -->
@@ -350,6 +376,13 @@
       <span class="tag">+ CHALLENGE</span>
       <button class="play-btn" onclick="event.stopPropagation(); startGame('enhanced');">▶ Play</button>
     </div>
+    <div class="card" data-mode="highscores" onclick="HS.showHighScoreModal()">
+      <div class="icon">🏆</div>
+      <h2>High Scores</h2>
+      <p>Watch replays of the greatest runs, then beat them. Climb the leaderboard with the longest snake in the least time.</p>
+      <span class="tag">&nbsp;</span>
+      <button class="play-btn" onclick="event.stopPropagation(); HS.showHighScoreModal();" style="background:#f5a623;color:#1a1a2e;">View Scores</button>
+    </div>
     <div class="card" onclick="showAbout()">
       <div class="icon">ℹ️</div>
       <h2>About</h2>
@@ -361,19 +394,24 @@
 </div>
 
 <!-- Game UI -->
-<div id="gameUI" style="display:none;">
-  <h1>🐍⏪ Rewind Snake</h1>
+<div id="gameUI" style="display:none;width:100%;max-width:560px;text-align:center;">
+  <div style="display:flex;align-items:center;justify-content:center;gap:10px;margin-bottom:10px;">
+    <img src="icon-192.png" alt="" style="width:32px;height:32px;border-radius:8px;">
+    <h1 style="margin:0;font-size:1.3rem;">Rewind Snake</h1>
+  </div>
   <div id="score">Score: 0</div>
-<div id="powerup-flash"></div>
-<canvas id="game"></canvas>
-<div id="msg"></div>
-<button id="btn" onclick="confirmRestart()">Play Again</button>
-<button id="undoBtn" onclick="showUndoPopup()">⏪ Back in Time</button>
-<button id="homeBtn" onclick="showHomePopup()">🏠 Home</button>
-  <div id="highscoreSave">
+  <div id="powerup-flash"></div>
+  <canvas id="game"></canvas>
+  <div id="msg"></div>
+  <div id="controls"></div>
+  <div style="display:flex;flex-wrap:wrap;justify-content:center;gap:8px;margin-top:8px;padding:8px;">
+    <button id="undoBtn" onclick="showUndoPopup()">⏪ Back in Time</button>
     <button id="saveHighscoreBtn">🏆 Save High Score</button>
   </div>
-  <div id="controls">Arrow keys or WASD to move · <b>X</b> for Wall Breaker (Enhanced)</div>
+  <div style="display:flex;flex-wrap:wrap;justify-content:center;gap:8px;margin-top:8px;padding:8px;">
+    <button id="btn" onclick="confirmRestart()">🔄 Play Again</button>
+    <button id="homeBtn" onclick="showHomePopup()">🏠 Home</button>
+  </div>
 </div>
 
 <!-- About modal -->
@@ -421,6 +459,46 @@
   <div id="countdownNum"></div>
 </div>
 
+<!-- Save Score Modal -->
+<div id="saveScoreModalOverlay" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,0.7);justify-content:center;align-items:center;z-index:700;">
+  <div style="background:#16213e;border:2px solid #0f3460;border-radius:14px;padding:28px 32px;max-width:400px;width:90vw;max-height:80vh;overflow-y:auto;color:#eee;position:relative;">
+    <span class="close-btn" id="saveScoreClose">✕</span>
+    <h2 style="margin-bottom:14px;font-size:1.4rem;text-align:center;">🏆 Save High Score</h2>
+    <p style="color:#aaa;margin-bottom:16px;text-align:center;" id="saveScoreInfo"></p>
+    <input type="text" id="saveScoreNameInput" placeholder="Enter your name (optional)" maxlength="20" style="width:100%;padding:8px 12px;font-size:1rem;border:2px solid #0f3460;border-radius:8px;background:#1a1a2e;color:#eee;outline:none;margin-bottom:16px;">
+    <div style="display:flex;gap:10px;justify-content:center;">
+      <button id="saveScoreCancel" style="padding:8px 24px;border:none;border-radius:8px;cursor:pointer;background:#0f3460;color:#eee;font-size:0.95rem;">Cancel</button>
+      <button id="saveScoreSubmit" style="padding:8px 24px;border:none;border-radius:8px;cursor:pointer;background:#f5a623;color:#1a1a2e;font-size:0.95rem;font-weight:bold;">Save Score</button>
+    </div>
+  </div>
+</div>
+
+<!-- High Scores Modal -->
+<div id="scoreModalOverlay" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,0.7);justify-content:center;align-items:center;z-index:700;">
+  <div style="background:#16213e;border:2px solid #0f3460;border-radius:14px;padding:28px 32px;max-width:540px;width:90vw;max-height:80vh;overflow-y:auto;color:#eee;position:relative;">
+    <span class="close-btn" id="scoreClose">✕</span>
+    <h2 style="margin-bottom:14px;font-size:1.5rem;text-align:center;">🏆 High Scores</h2>
+    <div style="display:flex;gap:8px;margin-bottom:16px;justify-content:center;">
+      <button class="hs-tab" data-mode="normal" style="padding:6px 20px;border:none;border-radius:8px;cursor:pointer;background:#0f3460;color:#4ecca3;font-size:0.9rem;">Normal</button>
+      <button class="hs-tab" data-mode="enhanced" style="padding:6px 20px;border:none;border-radius:8px;cursor:pointer;background:#0f3460;color:#e94560;font-size:0.9rem;">Enhanced</button>
+    </div>
+    <div id="scoreList" style="min-height:40px;"></div>
+  </div>
+</div>
+
+<!-- Replay Overlay -->
+<div id="replayOverlay" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,0.9);justify-content:center;align-items:center;flex-direction:column;z-index:750;color:#eee;">
+  <div style="text-align:center;padding:20px;max-width:600px;width:95vw;">
+    <h2 id="replayTitle" style="margin-bottom:8px;"></h2>
+    <p id="replayInfo" style="color:#aaa;margin-bottom:12px;"></p>
+    <canvas id="replayCanvas" style="border:2px solid #0f3460;border-radius:6px;background:#16213e;display:block;margin:0 auto;"></canvas>
+    <div style="margin-top:12px;display:flex;gap:10px;justify-content:center;align-items:center;">
+      <button id="replayClose" style="padding:8px 24px;border:none;border-radius:8px;cursor:pointer;background:#0f3460;color:#eee;">Close</button>
+      <span id="replayProgress" style="color:#888;font-size:0.9rem;"></span>
+    </div>
+  </div>
+</div>
+
 <script src="highscore.js"></script>
 <script src="game.js"></script>
 <!-- Initialize Bitcoin Connect at startup -->
@@ -442,6 +520,15 @@
       hideAbout();
     }
   });
+
+  /* ── Service Worker (PWA offline support) ── */
+  if ('serviceWorker' in navigator) {
+    navigator.serviceWorker.register('sw.js').then(function(reg) {
+      console.log('[SW] Registered:', reg.scope);
+    }).catch(function(err) {
+      console.warn('[SW] Registration failed:', err.message);
+    });
+  }
 </script>
 </body>
 </html>
