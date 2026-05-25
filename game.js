@@ -628,6 +628,7 @@ function resumeGame(n) {
   alive = true;
   $btn.style.display = 'none';
   $undoBtn.style.display = 'none';
+  $homeBtn.style.display = 'none';
   if ($saveHighscoreBtn) $saveHighscoreBtn.style.display = 'none';
   $msg.textContent = '⏪ Traveled back ' + n + ' steps!';
   history = history.slice(0, history.length - n);
@@ -675,7 +676,7 @@ async function payAndRewind() {
     const { LightningAddress } = await import('https://esm.sh/@getalby/lightning-tools@^8.1.0/lnurl');
     const ln = new LightningAddress(PAYMENT_RECIPIENT);
     await ln.fetch();
-    const invoiceData = await ln.requestInvoice({ satoshi: cost });
+    const invoiceData = await ln.requestInvoice({ satoshi: cost, comment: '🐍⏪ Rewind Snake - ' + n + ' steps' });
 
     // Step 2: Initialize Bitcoin Connect and launch payment modal
     const { init, launchPaymentModal } = await import('https://esm.sh/@getalby/bitcoin-connect@^3.0.0');
