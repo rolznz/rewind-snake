@@ -45,10 +45,7 @@ function resizeGameCanvas() {
 
 // --- Touch controls ---
 let touchStartX = 0, touchStartY = 0;
-let touchMoved = false;
-const SWIPE_THRESHOLD = 15; // lowered from 30 for easier mobile swipes
-let longPressTimer = null;
-const LONG_PRESS_DELAY = 1000; // 1s long-press for Wall Breaker
+const SWIPE_THRESHOLD = 20; // lowered from 30 for easier mobile swipes
 let directionQueue = []; // queue rapid swipe directions
 
 function setupTouchControls() {
@@ -71,39 +68,27 @@ function _gameTouchStart(e) {
   e.preventDefault();
   touchStartX = e.touches[0].clientX;
   touchStartY = e.touches[0].clientY;
-  touchMoved = false;
-
-  // Long-press for Wall Breaker (Enhanced mode only)
-  if (alive && isEnhanced) {
-    longPressTimer = setTimeout(function () {
-      if (!touchMoved) {
-        activateWallBreaker();
-      }
-      longPressTimer = null;
-    }, LONG_PRESS_DELAY);
-  }
 }
 
 function _gameTouchMove(e) {
   if (!alive) return;
-  // Skip touches on the wall breaker button
-  const target = e.target;
-  if ($wallBreakerBtn && $wallBreakerBtnInner && ($wallBreakerBtnInner === target || $wallBreakerBtn.contains(target))) return;
 
   e.preventDefault();
 
-  // Track if finger moved significantly
-  const dx = Math.abs(e.touches[0].clientX - touchStartX);
-  const dy = Math.abs(e.touches[0].clientY - touchStartY);
-  if (dx > 10 || dy > 10) {
-    touchMoved = true;
-  }
+  // Detect direction changes during the swipe (multiple swipes without lifting finger)
+  const dxCurrent = e.touches[0].clientX - touchStartX;
+  const dyCurrent = e.touches[0].clientY - touchStartY;
+  if (Math.abs(dxCurrent) < SWIPE_THRESHOLD && Math.abs(dyCurrent) < SWIPE_THRESHOLD) return;
 
-  // Cancel long-press if finger moved
-  if (longPressTimer) {
-    clearTimeout(longPressTimer);
-    longPressTimer = null;
-  }
+  const currentDir = Math.abs(dxCurrent) > Math.abs(dyCurrent)
+    ? { x: dxCurrent > 0 ? 1 : -1, y: 0 }
+    : { x: 0, y: dyCurrent > 0 ? 1 : -1 };
+
+  directionQueue.push(currentDir);
+
+  // Reset start position so new direction changes are detected
+  touchStartX = e.touches[0].clientX;
+  touchStartY = e.touches[0].clientY;
 }
 
 function _gameTouchEnd(e) {
@@ -114,13 +99,6 @@ function _gameTouchEnd(e) {
 
   e.preventDefault();
 
-  // Don't treat long-press touch as a swipe
-  if (longPressTimer) {
-    clearTimeout(longPressTimer);
-    longPressTimer = null;
-    return;
-  }
-
   const dx = e.changedTouches[0].clientX - touchStartX;
   const dy = e.changedTouches[0].clientY - touchStartY;
   if (Math.abs(dx) < SWIPE_THRESHOLD && Math.abs(dy) < SWIPE_THRESHOLD) return;
@@ -129,22 +107,8 @@ function _gameTouchEnd(e) {
     ? { x: dx > 0 ? 1 : -1, y: 0 }
     : { x: 0, y: dy > 0 ? 1 : -1 };
 
-  // Queue direction so rapid consecutive swipes are respected
+  // Queue the final direction
   directionQueue.push(dir);
-  processDirectionQueue();
-}
-
-function processDirectionQueue() {
-  // Process one direction per tick (prevents eating more than 2 turns)
-  if (directionQueue.length > 2) {
-    directionQueue = directionQueue.slice(0, 2);
-  }
-  while (directionQueue.length > 0) {
-    const next = directionQueue.shift();
-    if (next.x === -dir.x && next.y === -dir.y) continue; // skip 180° turn
-    setDirection(next.x, next.y);
-    break; // one change per call, rest queued
-  }
 }
 
 function setDirection(dx, dy) {
@@ -163,13 +127,6 @@ function consumeDirectionQueue() {
     nextDir = { x: next.x, y: next.y };
     processed++;
   }
-}
-
-// --- Process direction queue each game tick (for rapid mobile turns) ---
-const originalUpdate = update;
-function update() {
-  consumeDirectionQueue();
-  return originalUpdate.apply(this, arguments);
 }
 
 // Handle window resize with debounce
@@ -354,6 +311,7 @@ function saveState() {
 }
 
 function update() {
+  consumeDirectionQueue();
   if (!alive) return;
   saveState(); // save before move
   steps++;

@@ -546,10 +546,48 @@
   if ('serviceWorker' in navigator) {
     navigator.serviceWorker.register('sw.js').then(function(reg) {
       console.log('[SW] Registered:', reg.scope);
+
+      // Watch for new service worker versions and prompt user to reload
+      navigator.serviceWorker.addEventListener('controllerchange', function() {
+        // Show reload banner when a new SW is waiting and user is on the page
+        showReloadBanner();
+      });
     }).catch(function(err) {
       console.warn('[SW] Registration failed:', err.message);
     });
+
+    // Listen for the SW controllerchange event when a waiting SW becomes active
+    navigator.serviceWorker.ready.then(function(reg) {
+      // Check if there's a waiting service worker (new version available)
+      if (reg.waiting) {
+        showReloadBanner();
+      }
+      // Listen for new SW installing
+      reg.installing.addEventListener('statechange', function() {
+        if (reg.waiting) {
+          showReloadBanner();
+        }
+      });
+    });
   }
+
+  // Reload banner for new PWA version
+  let reloadBanner = null;
+  function showReloadBanner() {
+    if (reloadBanner || document.getElementById('reloadBanner')) return;
+    const banner = document.createElement('div');
+    banner.id = 'reloadBanner';
+    banner.style.cssText = 'position:fixed;bottom:20px;left:50%;transform:translateX(-50%);background:#4ecca3;color:#1a1a2e;padding:12px 24px;border-radius:10px;font-size:0.95rem;font-weight:bold;z-index:9999;cursor:pointer;display:flex;align-items:center;gap:8px;box-shadow:0 4px 20px rgba(78,204,163,0.3);animation:bannerSlideIn 0.3s ease-out;';
+    banner.innerHTML = '🔄 Update available! <span style="text-decoration:underline">Tap to reload</span>';
+    banner.addEventListener('click', () => { window.location.reload(); });
+    document.body.appendChild(banner);
+    reloadBanner = banner;
+  }
+
+  // Add banner animation
+  const style = document.createElement('style');
+  style.textContent = '@keyframes bannerSlideIn { from { transform: translateX(-50%) translateY(100px); opacity: 0; } to { transform: translateX(-50%) translateY(0); opacity: 1; } }';
+  document.head.appendChild(style);
 </script>
 </body>
 </html>
