@@ -71,6 +71,17 @@ var HS = {}; // exposed globally
     return scores || [];
   };
 
+  /** Get a single score entry with state_history by id. */
+  HS.getScoreById = async function (id) {
+    var url = API_BASE + '/api/scores/' + encodeURIComponent(id);
+    var resp = await fetch(url);
+    if (!resp.ok) {
+      var errText = await resp.text();
+      throw new Error(errText || resp.statusText);
+    }
+    return resp.json();
+  };
+
   /* ── Escape HTML ─────────────────────────────────────────── */
 
   function escapeHTML(str) {
@@ -323,9 +334,8 @@ var HS = {}; // exposed globally
         scores.forEach(function (s, i) {
           var rank = i + 1;
           var medal = rank === 1 ? '🥇' : rank === 2 ? '🥈' : rank === 3 ? '🥉' : rank;
-          var replayBtn = s.state_history
-            ? '<button class="replay-btn" data-id="' + s.id + '" title="Replay this score">▶</button>'
-            : '';
+          var replayBtn =
+            '<button class="replay-btn" data-id="' + s.id + '" title="Replay this score">▶</button>';
           html += '<li style="display:flex;justify-content:space-between;align-items:center;padding:8px 12px;' +
             'margin-bottom:6px;border-radius:8px;background:#1a1a2e;">' +
             '<span style="font-weight:bold;color:#e94560;min-width:30px;">' + medal + '</span>' +
@@ -342,7 +352,8 @@ var HS = {}; // exposed globally
         scoreModalOverlay.querySelectorAll('.replay-btn').forEach(function (btn) {
           btn.addEventListener('click', function () {
             var scoreId = parseInt(btn.dataset.id, 10);
-            startReplay(scoreId, scores);
+            showReplayLoading(btn);
+            startReplay(scoreId);
           });
         });
       }
@@ -363,7 +374,7 @@ var HS = {}; // exposed globally
     hsCard.className = 'card';
     hsCard.innerHTML = '<div class="icon">🏆</div>' +
       '<h2>High Scores</h2>' +
-      '<p>See the best scores across both modes.</p>' +
+      '<p>Watch replays of the greatest runs, then beat them. Climb the leaderboard with the longest snake in the least time.</p>' +
       '<span class="tag">&nbsp;</span>' +
       '<button class="play-btn" style="background:#f5a623;color:#1a1a2e;">View Scores</button>';
     // Only the button triggers the modal (not the card)
@@ -387,11 +398,37 @@ var HS = {}; // exposed globally
 
   /* ── Replay viewer ──────────────────────────────────────── */
 
-  /** Start a replay for the given score ID. */
-  function startReplay(scoreId, scores) {
-    var entry = (scores || []).find(function (s) { return s.id === scoreId; });
-    if (!entry || !entry.state_history) return;
-    showReplayOverlay(entry);
+  /** Show a loading spinner on a replay button until replay overlay opens. */
+  function showReplayLoading(btn) {
+    var originalText = btn.innerHTML;
+    btn.disabled = true;
+    btn.style.opacity = '0.5';
+    // Show a small spinner overlay on the button
+    btn.innerHTML = '<span style="font-size:0.8rem;">⏳</span>';
+    btn._originalText = originalText;
+  }
+
+  function restoreReplayButton(btn) {
+    if (btn && btn._originalText !== undefined) {
+      btn.innerHTML = btn._originalText;
+      btn.disabled = false;
+      btn.style.opacity = '1';
+    }
+  }
+
+  /** Start a replay for the given score ID (fetches data from API). */
+  function startReplay(scoreId) {
+    HS.getScoreById(scoreId).then(function (entry) {
+      if (!entry || !entry.state_history) return;
+      var btn = document.querySelector('.replay-btn[data-id="' + scoreId + '"]');
+      restoreReplayButton(btn);
+      showReplayOverlay(entry);
+    }).catch(function (err) {
+      console.error('[HS] Failed to load replay data:', err);
+      var btn = document.querySelector('.replay-btn[data-id="' + scoreId + '"]');
+      restoreReplayButton(btn);
+      showToast('❌ Failed to load replay: ' + err.message);
+    });
   }
 
   /** Build and show the replay overlay modal. */

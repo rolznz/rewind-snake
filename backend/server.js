@@ -2,7 +2,7 @@ const express = require('express');
 const cors = require('cors');
 const rateLimit = require('express-rate-limit');
 const crypto = require('crypto');
-const { saveScore, getScoresByMode, getAllScores } = require('./database');
+const { saveScore, getScoresByMode, getScoreById } = require('./database');
 
 const app = express();
 
@@ -116,11 +116,11 @@ app.post('/api/scores', scoreLimiter, (req, res) => {
 
 // --- GET /api/scores — List scores ---
 app.get('/api/scores', (req, res) => {
-  const { mode = 'all', limit = '20' } = req.query;
+  const { mode = 'normal', limit = '20' } = req.query;
 
   // Validate mode
-  if (mode !== 'normal' && mode !== 'enhanced' && mode !== 'all') {
-    return res.status(400).json({ error: "Invalid mode. Must be 'normal', 'enhanced', or 'all'." });
+  if (mode !== 'normal' && mode !== 'enhanced') {
+    return res.status(400).json({ error: "Invalid mode. Must be 'normal' or 'enhanced'." });
   }
 
   // Validate limit
@@ -129,12 +129,29 @@ app.get('/api/scores', (req, res) => {
     return res.status(400).json({ error: 'Limit must be between 1 and 50.' });
   }
 
-  if (mode === 'all') {
-    res.json(getAllScores(limitNum));
-  } else {
-    const scores = getScoresByMode(mode, limitNum);
-    res.json({ [mode]: scores });
+  res.json({ [mode]: getScoresByMode(mode, limitNum) });
+});
+
+// --- GET /api/scores/:id — Get a single score with state_history for replay ---
+app.get('/api/scores/:id', function (req, res) {
+  var id = parseInt(req.params.id, 10);
+  if (isNaN(id)) {
+    return res.status(400).json({ error: 'Invalid score ID.' });
   }
+  var entry = getScoreById(id);
+  if (!entry) {
+    return res.status(404).json({ error: 'Score not found.' });
+  }
+  // Return full entry including state_history
+  res.json({
+    id: entry.id,
+    name: entry.name,
+    score: entry.score,
+    steps: entry.steps,
+    mode: entry.mode,
+    state_history: entry.state_history,
+    createdAt: entry.created_at
+  });
 });
 
 const PORT = process.env.PORT || 3000;
